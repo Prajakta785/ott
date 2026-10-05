@@ -602,13 +602,8 @@ export default function PublicWebsitePage() {
 
           {/* Right Action Controls */}
           <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
-            {/* Language Switcher: Segmented on desktop (md+), compact dropdown on mobile */}
-            <div className="hidden md:block">
-              <LanguageSwitcher variant="light" mode="segmented" />
-            </div>
-            <div className="md:hidden">
-              <LanguageSwitcher variant="light" mode="dropdown" />
-            </div>
+            {/* Language Switcher: Direct 1-tap clickable buttons on both mobile & desktop */}
+            <LanguageSwitcher variant="light" mode="segmented" />
 
             {/* Login Button: Properly sized and positioned so it never cuts off on mobile */}
             <Link

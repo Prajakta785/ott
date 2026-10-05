@@ -46,15 +46,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     // Check if user is stored in session
     try {
+      localStorage.removeItem('ott_admin_explicit_logout');
       const stored = localStorage.getItem('ott_admin_session_user');
       const isMasterSuper = localStorage.getItem('ott_admin_master_super');
-      const isExplicitLogout = localStorage.getItem('ott_admin_explicit_logout');
       if (stored) {
         const parsed = JSON.parse(stored);
         setUser(parsed);
         const isSuper = parsed.role === 'superadmin' || parsed.email?.toLowerCase().includes('admin') || isMasterSuper === 'true';
         setIsSuperAdminState(isSuper);
-      } else if (!isExplicitLogout) {
+      } else {
         // Auto-login default Super Admin so console loads smoothly without getting trapped
         const defaultAdmin = initialAdmins[0];
         setUser(defaultAdmin);
@@ -161,7 +161,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       localStorage.removeItem('ott_admin_session_user');
       localStorage.removeItem('ott_admin_master_super');
-      localStorage.setItem('ott_admin_explicit_logout', 'true');
+      localStorage.removeItem('ott_admin_explicit_logout');
     } catch {}
     if (typeof window !== 'undefined') {
       window.location.replace('/login');

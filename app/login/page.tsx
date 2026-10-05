@@ -259,6 +259,27 @@ export default function LoginPage() {
                 </>
               )}
             </button>
+
+            {/* Direct 1-Click Super Admin Access */}
+            <button
+              type="button"
+              disabled={loading}
+              onClick={async () => {
+                setLoading(true);
+                const res = await login('admin@graminbharat.tv', 'admin123');
+                if (res.success) {
+                  if (typeof window !== 'undefined') {
+                    window.location.replace('/admin');
+                  }
+                } else {
+                  setLoading(false);
+                }
+              }}
+              className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white text-xs font-bold transition shadow-sm flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+            >
+              <Sparkles className="w-4 h-4 text-amber-200" />
+              <span>{lang === 'mr' ? '⚡ मुख्य प्रशासक म्हणून थेट प्रवेश करा (1-Click)' : lang === 'hi' ? '⚡ मुख्य व्यवस्थापक के रूप में सीधा प्रवेश करें' : '⚡ Direct Super Admin Access (1-Click)'}</span>
+            </button>
           </form>
 
           {/* Quick Demo Credentials Helper */}
