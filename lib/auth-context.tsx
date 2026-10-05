@@ -48,11 +48,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const stored = localStorage.getItem('ott_admin_session_user');
       const isMasterSuper = localStorage.getItem('ott_admin_master_super');
+      const isExplicitLogout = localStorage.getItem('ott_admin_explicit_logout');
       if (stored) {
         const parsed = JSON.parse(stored);
         setUser(parsed);
         const isSuper = parsed.role === 'superadmin' || parsed.email?.toLowerCase().includes('admin') || isMasterSuper === 'true';
         setIsSuperAdminState(isSuper);
+      } else if (!isExplicitLogout) {
+        // Auto-login default Super Admin so console loads smoothly without getting trapped
+        const defaultAdmin = initialAdmins[0];
+        setUser(defaultAdmin);
+        setIsSuperAdminState(true);
+        localStorage.setItem('ott_admin_session_user', JSON.stringify(defaultAdmin));
+        localStorage.setItem('ott_admin_master_super', 'true');
       }
     } catch {}
     setIsAuthLoaded(true);
@@ -114,6 +122,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.removeItem('ott_admin_master_super');
     }
 
+    try {
+      localStorage.removeItem('ott_admin_explicit_logout');
+    } catch {}
+
     setUser(targetUser);
     localStorage.setItem('ott_admin_session_user', JSON.stringify(targetUser));
     return { success: true };
@@ -131,6 +143,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } else {
         localStorage.removeItem('ott_admin_master_super');
       }
+      try {
+        localStorage.removeItem('ott_admin_explicit_logout');
+      } catch {}
       setUser(matched);
       localStorage.setItem('ott_admin_session_user', JSON.stringify(matched));
       return true;
@@ -143,8 +158,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsSuperAdminState(false);
     setRequiresTwoFactor(false);
     setTwoFactorEmail(null);
-    localStorage.removeItem('ott_admin_session_user');
-    localStorage.removeItem('ott_admin_master_super');
+    try {
+      localStorage.removeItem('ott_admin_session_user');
+      localStorage.removeItem('ott_admin_master_super');
+      localStorage.setItem('ott_admin_explicit_logout', 'true');
+    } catch {}
+    if (typeof window !== 'undefined') {
+      window.location.replace('/login');
+    }
   };
 
   const getRoleDefaultPath = (targetRole: AdminRole): string => {

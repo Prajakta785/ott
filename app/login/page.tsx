@@ -77,7 +77,11 @@ export default function LoginPage() {
         } else {
           localStorage.removeItem('ott_admin_remember_email');
         }
-        router.push('/admin');
+        if (typeof window !== 'undefined') {
+          window.location.replace('/admin');
+        } else {
+          router.push('/admin');
+        }
       } else {
         setErrorMessage(
           res.error || (

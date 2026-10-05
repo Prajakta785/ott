@@ -72,10 +72,16 @@ const memCache: Record<string, any> = {};
 if (typeof window !== 'undefined') {
   try {
     const validKeys = Object.values(STORAGE_KEYS);
+    const preservedKeys = [
+      'ott_admin_session_user',
+      'ott_admin_master_super',
+      'ott_admin_explicit_logout',
+      'ott_admin_remember_email',
+    ];
     const keysToRemove: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
-      if (k && k.startsWith('ott_admin_') && !validKeys.includes(k) && k !== 'ott_admin_session_user') {
+      if (k && k.startsWith('ott_admin_') && !validKeys.includes(k) && !preservedKeys.includes(k)) {
         keysToRemove.push(k);
       }
     }

@@ -29,15 +29,25 @@ export default function DashboardLayout({
   // If unauthenticated, redirect to login
   React.useEffect(() => {
     if (isAuthLoaded && !isAuthenticated) {
-      router.push('/login');
+      if (typeof window !== 'undefined') {
+        window.location.replace('/login');
+      }
     }
-  }, [isAuthLoaded, isAuthenticated, router]);
+  }, [isAuthLoaded, isAuthenticated]);
 
   if (!isAuthLoaded || !isAuthenticated) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-[#FDFBF7] text-[#2D2522]">
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#FDFBF7] text-[#2D2522] p-6 text-center">
         <div className="w-10 h-10 border-3 border-[#D97706] border-t-transparent rounded-full animate-spin mb-4" />
-        <p className="text-sm font-semibold text-[#7A6F68]">Loading Gramin Bharat OTT Console...</p>
+        <p className="text-sm font-semibold text-[#7A6F68] mb-4">
+          {lang === 'mr' ? 'कन्सोल लोड होत आहे / तपासणी चालू आहे...' : lang === 'hi' ? 'कंसोल लोड हो रहा है...' : 'Loading Gramin Bharat OTT Console...'}
+        </p>
+        <Link 
+          href="/login" 
+          className="inline-flex items-center gap-2 px-4 py-2 bg-[#D97706] text-white text-xs font-semibold rounded-lg hover:bg-[#B45309] transition-colors shadow-sm"
+        >
+          {lang === 'mr' ? 'लॉगिन पृष्ठावर जा' : lang === 'hi' ? 'लॉगिन पृष्ठ पर जाएं' : 'Go to Login'}
+        </Link>
       </div>
     );
   }
