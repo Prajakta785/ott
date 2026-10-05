@@ -1,0 +1,4 @@
+{
+  "/api/sync-all/route": "app/api/sync-all/route.js",
+  "/page": "app/page.js"
+}

@@ -1,0 +1,115 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.uid == 'PMz0uPlYI7UbEZoMeMMdegRxFmy1' ||
+        request.auth.token.email == 'admin@graminbharat.tv' ||
+        (request.auth.token.email != null && request.auth.token.email.matches('.*admin.*')) ||
+        request.auth.token.isAdmin == true ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    /* ---------------- Admins Collection ---------------- */
+    match /admins/{adminId} {
+      allow read, write: if true;
+    }
+
+    /* ---------------- Content Collection (Movies, Series, Podcasts, News) ---------------- */
+    match /content/{contentId} {
+      allow read: if true;
+      allow write: if isAdmin() || isAuthenticated();
+
+      match /seasons/{seasonId} {
+        allow read: if true;
+        allow write: if isAdmin() || isAuthenticated();
+
+        match /episodes/{episodeId} {
+          allow read: if true;
+          allow write: if isAdmin() || isAuthenticated();
+        }
+      }
+
+      match /episodes/{episodeId} {
+        allow read: if true;
+        allow write: if isAdmin() || isAuthenticated();
+      }
+    }
+
+    /* ---------------- Banners ---------------- */
+    match /banners/{bannerId} {
+      allow read: if true;
+      allow write: if isAdmin() || isAuthenticated();
+    }
+
+    /* ---------------- Subscription Plans ---------------- */
+    match /plans/{planId} {
+      allow read: if true;
+      allow write: if isAdmin() || isAuthenticated();
+    }
+
+    /* ---------------- Categories & Settings ---------------- */
+    match /categories/{categoryId} {
+      allow read: if true;
+      allow write: if isAdmin() || isAuthenticated();
+    }
+
+    match /company_info/{infoId} {
+      allow read: if true;
+      allow write: if isAdmin() || isAuthenticated();
+    }
+
+    match /ads/{adId} {
+      allow read: if true;
+      allow write: if isAdmin() || isAuthenticated();
+    }
+
+    match /live_channels/{channelId} {
+      allow read: if true;
+      allow write: if isAdmin() || isAuthenticated();
+    }
+
+    match /liveChannels/{channelId} {
+      allow read: if true;
+      allow write: if isAdmin() || isAuthenticated();
+    }
+
+    match /notifications/{notifId} {
+      allow read: if true;
+      allow write: if isAdmin() || isAuthenticated();
+    }
+
+    match /grievances/{grievanceId} {
+      allow read, write: if true;
+    }
+
+    /* ---------------- Users & User Profiles ---------------- */
+    match /users/{userId} {
+      allow read, write: if true;
+
+      match /profiles/{profileId} {
+        allow read, write: if true;
+      }
+
+      match /continueWatching/{contentId} {
+        allow read, write: if true;
+      }
+
+      match /watchlist/{contentId} {
+        allow read, write: if true;
+      }
+    }
+
+    /* ---------------- User Subscriptions ---------------- */
+    match /subscriptions/{subId} {
+      allow read, write: if true;
+    }
+  }
+}
