@@ -19,11 +19,9 @@ body {
   overflow-x: clip;
 }
 
-/* Ensure alphabet, letters, and typography sit gracefully over the soft textured surface */
+/* Ensure typography renders crisply */
 h1, h2, h3, h4, h5, h6,
 p, label, blockquote {
-  position: relative;
-  z-index: 2;
   text-rendering: optimizeLegibility;
 }
 

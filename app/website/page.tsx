@@ -55,6 +55,243 @@ import { formatDate } from '@/lib/utils';
 import { useLanguage } from '@/lib/i18n';
 import { LanguageSwitcher } from '@/components/language-switcher';
 
+// -------------------------------------------------------------
+// 3D / Flat Styled Navigation Icons
+// -------------------------------------------------------------
+function NavHome3DIcon({ className = "w-6 h-6" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
+      <defs>
+        <linearGradient id="navHomeRoof" x1="8" y1="20" x2="24" y2="6" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#EA580C" />
+          <stop offset="100%" stopColor="#FB923C" />
+        </linearGradient>
+        <linearGradient id="navHomeRoofShade" x1="24" y1="6" x2="40" y2="20" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#FB923C" />
+          <stop offset="100%" stopColor="#C2410C" />
+        </linearGradient>
+        <linearGradient id="navHomeWall" x1="12" y1="18" x2="36" y2="40" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#FFFBEB" />
+          <stop offset="100%" stopColor="#FEF3C7" />
+        </linearGradient>
+        <linearGradient id="navHomeDoor" x1="24" y1="26" x2="32" y2="40" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#B45309" />
+          <stop offset="100%" stopColor="#78350F" />
+        </linearGradient>
+      </defs>
+      <ellipse cx="24" cy="42" rx="16" ry="3" fill="#000000" fillOpacity="0.16" />
+      <rect x="30" y="10" width="5.5" height="9" rx="1.5" fill="#C2410C" />
+      <rect x="29" y="8.5" width="7.5" height="2.5" rx="1" fill="#EA580C" />
+      <circle cx="34" cy="6" r="1.5" fill="#E2E8F0" opacity="0.8" />
+      <circle cx="36" cy="3.5" r="2" fill="#E2E8F0" opacity="0.5" />
+      <rect x="11" y="19" width="26" height="21" rx="3.5" fill="url(#navHomeWall)" stroke="#D97706" strokeWidth="1" />
+      <rect x="14.5" y="24" width="7.5" height="7.5" rx="1.5" fill="#38BDF8" stroke="#0284C7" strokeWidth="1" />
+      <line x1="18.25" y1="24" x2="18.25" y2="31.5" stroke="#BAE6FD" strokeWidth="0.9" />
+      <line x1="14.5" y1="27.75" x2="22" y2="27.75" stroke="#BAE6FD" strokeWidth="0.9" />
+      <rect x="25.5" y="25" width="8.5" height="15" rx="2" fill="url(#navHomeDoor)" />
+      <circle cx="27.5" cy="32.5" r="1" fill="#FCD34D" />
+      <path d="M7 20L24 5L41 20L37 22L24 9.5L11 22L7 20Z" fill="url(#navHomeRoof)" />
+      <path d="M24 5L41 20H34L24 10.5L14 20H7L24 5Z" fill="url(#navHomeRoofShade)" opacity="0.3" />
+      <path d="M8 20.5L24 6.5L40 20.5" stroke="#FDE68A" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function NavCompany3DIcon({ className = "w-6 h-6" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
+      <defs>
+        <linearGradient id="navCompTower" x1="15" y1="8" x2="33" y2="42" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#3B82F6" />
+          <stop offset="60%" stopColor="#1D4ED8" />
+          <stop offset="100%" stopColor="#1E3A8A" />
+        </linearGradient>
+        <linearGradient id="navCompLeft" x1="6" y1="18" x2="17" y2="42" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#60A5FA" />
+          <stop offset="100%" stopColor="#2563EB" />
+        </linearGradient>
+        <linearGradient id="navCompRight" x1="31" y1="22" x2="42" y2="42" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#2563EB" />
+          <stop offset="100%" stopColor="#1E40AF" />
+        </linearGradient>
+      </defs>
+      <ellipse cx="24" cy="43" rx="18" ry="3" fill="#000000" fillOpacity="0.16" />
+      <rect x="7" y="20" width="10" height="22" rx="2.5" fill="url(#navCompLeft)" />
+      <rect x="9.5" y="23" width="2" height="2" rx="0.5" fill="#DBEAFE" />
+      <rect x="13" y="23" width="2" height="2" rx="0.5" fill="#DBEAFE" />
+      <rect x="9.5" y="28" width="2" height="2" rx="0.5" fill="#DBEAFE" />
+      <rect x="13" y="28" width="2" height="2" rx="0.5" fill="#DBEAFE" />
+      <rect x="9.5" y="33" width="2" height="2" rx="0.5" fill="#DBEAFE" />
+      <rect x="13" y="33" width="2" height="2" rx="0.5" fill="#DBEAFE" />
+      <rect x="31" y="23" width="10" height="19" rx="2.5" fill="url(#navCompRight)" />
+      <rect x="33.5" y="26" width="2" height="2" rx="0.5" fill="#DBEAFE" />
+      <rect x="37" y="26" width="2" height="2" rx="0.5" fill="#DBEAFE" />
+      <rect x="33.5" y="31" width="2" height="2" rx="0.5" fill="#DBEAFE" />
+      <rect x="37" y="31" width="2" height="2" rx="0.5" fill="#DBEAFE" />
+      <rect x="15" y="10" width="18" height="32" rx="3.5" fill="url(#navCompTower)" stroke="#93C5FD" strokeWidth="0.8" />
+      <line x1="24" y1="4" x2="24" y2="10" stroke="#F59E0B" strokeWidth="2.5" strokeLinecap="round" />
+      <circle cx="24" cy="3.5" r="2.2" fill="#EF4444" />
+      <rect x="18" y="14" width="3" height="3" rx="0.5" fill="#FEF08A" />
+      <rect x="23" y="14" width="3" height="3" rx="0.5" fill="#FEF08A" />
+      <rect x="27" y="14" width="3" height="3" rx="0.5" fill="#FEF08A" />
+      <rect x="18" y="20" width="3" height="3" rx="0.5" fill="#BAE6FD" />
+      <rect x="23" y="20" width="3" height="3" rx="0.5" fill="#FEF08A" />
+      <rect x="27" y="20" width="3" height="3" rx="0.5" fill="#BAE6FD" />
+      <rect x="18" y="26" width="3" height="3" rx="0.5" fill="#BAE6FD" />
+      <rect x="23" y="26" width="3" height="3" rx="0.5" fill="#BAE6FD" />
+      <rect x="27" y="26" width="3" height="3" rx="0.5" fill="#FEF08A" />
+      <rect x="21" y="34.5" width="6" height="7.5" rx="1" fill="#0F172A" />
+      <rect x="22" y="35.5" width="4" height="6.5" rx="0.5" fill="#38BDF8" opacity="0.85" />
+    </svg>
+  );
+}
+
+function NavAbout3DIcon({ className = "w-6 h-6" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
+      <defs>
+        <radialGradient id="navAboutGrad" cx="35%" cy="30%" r="65%">
+          <stop offset="0%" stopColor="#67E8F9" />
+          <stop offset="45%" stopColor="#0EA5E9" />
+          <stop offset="100%" stopColor="#0284C7" />
+        </radialGradient>
+        <linearGradient id="navAboutRing" x1="6" y1="6" x2="42" y2="42" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#BAE6FD" />
+          <stop offset="100%" stopColor="#0369A1" />
+        </linearGradient>
+      </defs>
+      <ellipse cx="24" cy="42" rx="14" ry="3" fill="#000000" fillOpacity="0.18" />
+      <circle cx="24" cy="23" r="18.5" fill="url(#navAboutRing)" opacity="0.35" />
+      <circle cx="24" cy="23" r="16.5" fill="url(#navAboutGrad)" />
+      <ellipse cx="20" cy="14" rx="7.5" ry="3.5" fill="#FFFFFF" fillOpacity="0.45" transform="rotate(-22 20 14)" />
+      <circle cx="24" cy="15.5" r="2.5" fill="#FFFFFF" />
+      <rect x="21.5" y="20.5" width="5" height="11" rx="2" fill="#FFFFFF" />
+      <path d="M19.5 22H24" stroke="#FFFFFF" strokeWidth="2" strokeLinecap="round" />
+      <path d="M19.5 31.5H28.5" stroke="#FFFFFF" strokeWidth="2.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function NavContact3DIcon({ className = "w-6 h-6" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
+      <defs>
+        <radialGradient id="navContactBg" cx="35%" cy="30%" r="70%">
+          <stop offset="0%" stopColor="#34D399" />
+          <stop offset="60%" stopColor="#059669" />
+          <stop offset="100%" stopColor="#064E3B" />
+        </radialGradient>
+      </defs>
+      <ellipse cx="24" cy="42" rx="14" ry="3" fill="#000000" fillOpacity="0.18" />
+      <rect x="6.5" y="5.5" width="35" height="35" rx="12" fill="url(#navContactBg)" />
+      <rect x="8.5" y="7.5" width="31" height="15" rx="9" fill="#FFFFFF" fillOpacity="0.22" />
+      <path 
+        d="M17 16C17.8 15.2 19 15.2 19.8 16L22 18.2C22.8 19 22.8 20.2 22 21L20.8 22.2C21.9 24.4 23.6 26.1 25.8 27.2L27 26C27.8 25.2 29 25.2 29.8 26L32 28.2C32.8 29 32.8 30.2 32 31L30.2 32.8C29.2 33.8 27.5 34.1 25.8 33.1C20.8 30.5 17.5 27.2 14.9 22.2C13.9 20.5 14.2 18.8 15.2 17.8L17 16Z" 
+        fill="#FFFFFF" 
+      />
+      <path d="M28 13.5C31.5 15 34.5 18 35 22" stroke="#FEF08A" strokeWidth="2.5" strokeLinecap="round" />
+      <path d="M25 16.5C27.2 17.5 29 19.5 29.5 22" stroke="#FEF08A" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function NavNews3DIcon({ className = "w-6 h-6" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
+      <defs>
+        <linearGradient id="navNewsFold" x1="10" y1="8" x2="38" y2="42" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#FFFFFF" />
+          <stop offset="70%" stopColor="#F8FAFC" />
+          <stop offset="100%" stopColor="#E2E8F0" />
+        </linearGradient>
+        <linearGradient id="navNewsHeader" x1="10" y1="12" x2="35" y2="12" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#EF4444" />
+          <stop offset="100%" stopColor="#DC2626" />
+        </linearGradient>
+        <linearGradient id="navNewsBack" x1="14" y1="6" x2="42" y2="38" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#CBD5E1" />
+          <stop offset="100%" stopColor="#94A3B8" />
+        </linearGradient>
+      </defs>
+      <ellipse cx="24" cy="42" rx="16" ry="3" fill="#000000" fillOpacity="0.16" />
+      <rect x="14" y="6" width="27" height="33" rx="3" fill="url(#navNewsBack)" transform="rotate(4 27.5 22.5)" />
+      <rect x="7" y="9" width="30" height="32" rx="3" fill="url(#navNewsFold)" stroke="#CBD5E1" strokeWidth="1" />
+      <rect x="10" y="12" width="24" height="6" rx="1.5" fill="url(#navNewsHeader)" />
+      <rect x="12" y="14" width="10" height="2" rx="0.5" fill="#FFFFFF" />
+      <circle cx="31" cy="15" r="1.2" fill="#FEF08A" />
+      <rect x="10" y="21" width="10" height="9" rx="1" fill="#38BDF8" />
+      <circle cx="13" cy="24" r="1" fill="#FEF08A" />
+      <path d="M10 28L14 24L17 27L20 25" stroke="#0284C7" strokeWidth="0.8" />
+      <rect x="22" y="21" width="12" height="2" rx="1" fill="#475569" />
+      <rect x="22" y="25" width="12" height="2" rx="1" fill="#94A3B8" />
+      <rect x="22" y="29" width="8" height="2" rx="1" fill="#94A3B8" />
+      <rect x="10" y="33" width="24" height="2" rx="1" fill="#64748B" />
+      <rect x="10" y="37" width="18" height="1.8" rx="0.9" fill="#94A3B8" />
+    </svg>
+  );
+}
+
+function NavInfoService3DIcon({ className = "w-6 h-6" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
+      <defs>
+        <linearGradient id="navInfoGrad" x1="8" y1="6" x2="36" y2="42" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#A855F7" />
+          <stop offset="100%" stopColor="#7E22CE" />
+        </linearGradient>
+        <linearGradient id="navInfoPaper" x1="12" y1="10" x2="36" y2="38" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#FFFFFF" />
+          <stop offset="100%" stopColor="#F5F3FF" />
+        </linearGradient>
+        <radialGradient id="navGoldSeal" cx="40%" cy="40%" r="60%">
+          <stop offset="0%" stopColor="#FDE047" />
+          <stop offset="70%" stopColor="#EAB308" />
+          <stop offset="100%" stopColor="#CA8A04" />
+        </radialGradient>
+      </defs>
+      <ellipse cx="24" cy="42" rx="15" ry="3" fill="#000000" fillOpacity="0.16" />
+      <rect x="8" y="7" width="28" height="34" rx="3.5" fill="url(#navInfoGrad)" />
+      <rect x="11" y="9" width="26" height="30" rx="2.5" fill="url(#navInfoPaper)" stroke="#DDD6FE" strokeWidth="0.8" />
+      <rect x="15" y="14" width="14" height="2.5" rx="1" fill="#7E22CE" />
+      <rect x="15" y="19" width="18" height="2" rx="1" fill="#C4B5FD" />
+      <rect x="15" y="23" width="18" height="2" rx="1" fill="#C4B5FD" />
+      <rect x="15" y="27" width="12" height="2" rx="1" fill="#C4B5FD" />
+      <circle cx="31" cy="30" r="6" fill="url(#navGoldSeal)" stroke="#B45309" strokeWidth="0.8" />
+      <path d="M29 30L30.5 31.5L33.5 28.5" stroke="#78350F" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M28 35L27 40L30 38.5L31 35" fill="#EAB308" />
+      <path d="M31 35L32 38.5L35 40L34 35" fill="#CA8A04" />
+    </svg>
+  );
+}
+
+function NavGrievance3DIcon({ className = "w-6 h-6" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
+      <defs>
+        <linearGradient id="navHornGrad" x1="10" y1="16" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#EF4444" />
+          <stop offset="50%" stopColor="#DC2626" />
+          <stop offset="100%" stopColor="#991B1B" />
+        </linearGradient>
+        <linearGradient id="navRimGrad" x1="30" y1="12" x2="34" y2="34" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#FEF08A" />
+          <stop offset="50%" stopColor="#F59E0B" />
+          <stop offset="100%" stopColor="#D97706" />
+        </linearGradient>
+      </defs>
+      <ellipse cx="24" cy="42" rx="15" ry="3" fill="#000000" fillOpacity="0.18" />
+      <path d="M17 28L13 38C12.5 39.2 13.5 40.5 14.8 40.5H18C19 40.5 19.8 39.7 20 38.7L21.5 28" fill="#475569" />
+      <path d="M15 30L13.5 35" stroke="#94A3B8" strokeWidth="1" strokeLinecap="round" />
+      <path d="M13 20C13 18.5 14 18 16 18.5L31 13V33L16 27.5C14 28 13 27.5 13 26V20Z" fill="url(#hornGrad)" />
+      <rect x="9" y="19" width="5" height="8" rx="2.5" fill="#334155" />
+      <ellipse cx="31" cy="23" rx="3.5" ry="10" fill="url(#navRimGrad)" stroke="#B45309" strokeWidth="0.8" />
+      <path d="M16 19.5L30 14.5" stroke="#FCA5A5" strokeWidth="1.5" strokeLinecap="round" />
+      <path d="M37 17C39 19 40 21 40 23C40 25 39 27 37 29" stroke="#F59E0B" strokeWidth="2.5" strokeLinecap="round" />
+      <path d="M41 13C44 16 45 19.5 45 23C45 26.5 44 30 41 33" stroke="#EF4444" strokeWidth="2.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export default function PublicWebsitePage() {
   const { lang, t } = useLanguage();
   const [newsItems, setNewsItems] = useState<ContentItem[]>([]);
@@ -436,7 +673,23 @@ export default function PublicWebsitePage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#FAF7F2] text-slate-800 font-sans selection:bg-amber-200 selection:text-slate-900 overflow-x-clip">
+    <div className="min-h-screen bg-[#FAF7F2] text-slate-800 font-sans selection:bg-amber-200 selection:text-slate-900 overflow-x-clip relative">
+      {/* Website-only Textured Background Layer (Low Opacity) */}
+      <div 
+        className="fixed inset-0 pointer-events-none z-0"
+        style={{
+          backgroundImage: "url('/website-bg.png')",
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat',
+          opacity: 0.12,
+          mixBlendMode: 'multiply',
+          filter: 'contrast(115%) brightness(96%)',
+        }}
+        aria-hidden="true"
+      />
+
+      <div className="relative z-10">
       
       {/* 1. TOP TICKER WITH HIGH-ENERGY MEDIA STRIP */}
       <div className="bg-gradient-to-r from-stone-950 via-[#1c1917] to-amber-950 text-white text-[11px] font-bold py-2 px-4 border-b border-amber-900/40 shadow-xs">
@@ -465,23 +718,23 @@ export default function PublicWebsitePage() {
 
       {/* 2. GLASSMORPHIC MAIN NAVBAR */}
       <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-xl border-b border-[#E5DBCA] shadow-sm transition-all">
-        <div className="max-w-[1440px] mx-auto px-3 sm:px-6 py-2 flex items-center justify-between gap-3 xl:gap-5">
+        <div className="max-w-[1440px] mx-auto px-2.5 sm:px-6 py-2 flex items-center justify-between gap-1.5 sm:gap-4">
           
           {/* Brand Logo & Media Lockup */}
-          <Link href="/" className="flex items-center gap-2.5 sm:gap-3 group shrink-0 min-w-0">
-            <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-white border border-[#E5DBCA] p-1 flex items-center justify-center shadow-xs group-hover:scale-105 transition-transform overflow-hidden shrink-0">
+          <Link href="/" className="flex items-center gap-1.5 sm:gap-3 group shrink min-w-0">
+            <div className="w-8 h-8 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-white border border-[#E5DBCA] p-1 flex items-center justify-center shadow-xs group-hover:scale-105 transition-transform overflow-hidden shrink-0">
               <img src="/logo.png" alt="ग्रामीण भारत TV" className="w-full h-full object-contain" />
             </div>
             <div className="min-w-0">
-              <div className="flex items-center gap-1.5">
-                <span className="font-black text-slate-900 text-sm sm:text-base tracking-tight group-hover:text-amber-700 transition-colors whitespace-nowrap">
+              <div className="flex items-center gap-1 sm:gap-1.5">
+                <span className="font-black text-slate-900 text-xs sm:text-base tracking-tight group-hover:text-amber-700 transition-colors truncate">
                   {lang === 'en' ? 'Gramin Bharat' : (t('brandTitle').replace(/TV|टीव्ही/gi, '').trim())}
                 </span>
-                <span className="bg-gradient-to-r from-red-600 to-rose-600 text-white font-black text-[9px] px-1.5 py-0.5 rounded shadow-xs shrink-0">
+                <span className="bg-gradient-to-r from-red-600 to-rose-600 text-white font-black text-[8px] sm:text-[9px] px-1 py-0.2 sm:px-1.5 sm:py-0.5 rounded shadow-xs shrink-0">
                   TV
                 </span>
               </div>
-              <p className="text-[10px] sm:text-[11px] font-black text-amber-700 tracking-tight leading-tight truncate">
+              <p className="text-[9px] sm:text-[11px] font-bold text-amber-700 tracking-tight leading-none truncate hidden xs:block">
                 {t('brandSubtitle')}
               </p>
               <p className="text-[9px] text-slate-400 font-semibold hidden 2xl:block truncate">
@@ -497,8 +750,8 @@ export default function PublicWebsitePage() {
               href="/"
               className="flex flex-col items-center justify-center gap-1 px-2.5 xl:px-3 py-1.5 rounded-xl hover:bg-amber-100/60 text-amber-900 group transition-all shrink-0 cursor-pointer"
             >
-              <div className="w-7 h-7 rounded-lg bg-amber-100 text-amber-800 flex items-center justify-center group-hover:scale-110 group-hover:bg-amber-200 transition-all shadow-2xs">
-                <Home className="w-3.5 h-3.5" />
+              <div className="w-8 h-8 rounded-xl bg-amber-100/80 border border-amber-200/60 flex items-center justify-center group-hover:scale-110 group-hover:bg-amber-200/90 group-hover:-translate-y-0.5 transition-all shadow-2xs">
+                <NavHome3DIcon className="w-6 h-6 drop-shadow-xs" />
               </div>
               <span className="text-[11px] font-black tracking-tight whitespace-nowrap">
                 {t('navHome')}
@@ -510,8 +763,8 @@ export default function PublicWebsitePage() {
               href="#company-info"
               className="flex flex-col items-center justify-center gap-1 px-2.5 xl:px-3 py-1.5 rounded-xl hover:bg-amber-50 text-slate-700 hover:text-amber-800 group transition-all shrink-0 cursor-pointer"
             >
-              <div className="w-7 h-7 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center group-hover:scale-110 group-hover:bg-amber-100 group-hover:text-amber-800 transition-all shadow-2xs">
-                <Building className="w-3.5 h-3.5" />
+              <div className="w-8 h-8 rounded-xl bg-blue-100/80 border border-blue-200/60 flex items-center justify-center group-hover:scale-110 group-hover:bg-blue-200/90 group-hover:-translate-y-0.5 transition-all shadow-2xs">
+                <NavCompany3DIcon className="w-6 h-6 drop-shadow-xs" />
               </div>
               <span className="text-[11px] font-bold tracking-tight whitespace-nowrap">
                 {t('navCompanyInformation')}
@@ -523,8 +776,8 @@ export default function PublicWebsitePage() {
               href="#about-us"
               className="flex flex-col items-center justify-center gap-1 px-2.5 xl:px-3 py-1.5 rounded-xl hover:bg-amber-50 text-slate-700 hover:text-amber-800 group transition-all shrink-0 cursor-pointer"
             >
-              <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center group-hover:scale-110 group-hover:bg-blue-100 group-hover:text-blue-800 transition-all shadow-2xs">
-                <Info className="w-3.5 h-3.5" />
+              <div className="w-8 h-8 rounded-xl bg-cyan-100/80 border border-cyan-200/60 flex items-center justify-center group-hover:scale-110 group-hover:bg-cyan-200/90 group-hover:-translate-y-0.5 transition-all shadow-2xs">
+                <NavAbout3DIcon className="w-6 h-6 drop-shadow-xs" />
               </div>
               <span className="text-[11px] font-bold tracking-tight whitespace-nowrap">
                 {t('navAboutUsExact')}
@@ -536,8 +789,8 @@ export default function PublicWebsitePage() {
               href="#contact-us"
               className="flex flex-col items-center justify-center gap-1 px-2.5 xl:px-3 py-1.5 rounded-xl hover:bg-amber-50 text-slate-700 hover:text-amber-800 group transition-all shrink-0 cursor-pointer"
             >
-              <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center group-hover:scale-110 group-hover:bg-emerald-100 group-hover:text-emerald-800 transition-all shadow-2xs">
-                <Phone className="w-3.5 h-3.5" />
+              <div className="w-8 h-8 rounded-xl bg-emerald-100/80 border border-emerald-200/60 flex items-center justify-center group-hover:scale-110 group-hover:bg-emerald-200/90 group-hover:-translate-y-0.5 transition-all shadow-2xs">
+                <NavContact3DIcon className="w-6 h-6 drop-shadow-xs" />
               </div>
               <span className="text-[11px] font-bold tracking-tight whitespace-nowrap">
                 {t('navContactExact')}
@@ -549,8 +802,8 @@ export default function PublicWebsitePage() {
               href="#news-hub"
               className="flex flex-col items-center justify-center gap-1 px-2.5 xl:px-3 py-1.5 rounded-xl hover:bg-amber-50 text-slate-700 hover:text-amber-800 group transition-all shrink-0 cursor-pointer"
             >
-              <div className="w-7 h-7 rounded-lg bg-orange-50 text-orange-700 flex items-center justify-center group-hover:scale-110 group-hover:bg-orange-100 group-hover:text-orange-800 transition-all shadow-2xs">
-                <Newspaper className="w-3.5 h-3.5" />
+              <div className="w-8 h-8 rounded-xl bg-orange-100/80 border border-orange-200/60 flex items-center justify-center group-hover:scale-110 group-hover:bg-orange-200/90 group-hover:-translate-y-0.5 transition-all shadow-2xs">
+                <NavNews3DIcon className="w-6 h-6 drop-shadow-xs" />
               </div>
               <span className="text-[11px] font-bold tracking-tight whitespace-nowrap">
                 {t('navNewsExact')}
@@ -562,8 +815,8 @@ export default function PublicWebsitePage() {
               href="#information-hub"
               className="flex flex-col items-center justify-center gap-1 px-2.5 xl:px-3 py-1.5 rounded-xl hover:bg-amber-50 text-slate-700 hover:text-amber-800 group transition-all shrink-0 cursor-pointer"
             >
-              <div className="w-7 h-7 rounded-lg bg-purple-50 text-purple-700 flex items-center justify-center group-hover:scale-110 group-hover:bg-purple-100 group-hover:text-purple-800 transition-all shadow-2xs">
-                <FileText className="w-3.5 h-3.5" />
+              <div className="w-8 h-8 rounded-xl bg-purple-100/80 border border-purple-200/60 flex items-center justify-center group-hover:scale-110 group-hover:bg-purple-200/90 group-hover:-translate-y-0.5 transition-all shadow-2xs">
+                <NavInfoService3DIcon className="w-6 h-6 drop-shadow-xs" />
               </div>
               <span className="text-[11px] font-bold tracking-tight whitespace-nowrap">
                 {t('navInformationExact')}
@@ -575,8 +828,8 @@ export default function PublicWebsitePage() {
               href="#grievance-portal"
               className="flex flex-col items-center justify-center gap-1 px-2.5 xl:px-3 py-1.5 rounded-xl hover:bg-amber-50 text-amber-800 group transition-all shrink-0 cursor-pointer"
             >
-              <div className="w-7 h-7 rounded-lg bg-amber-50 text-amber-800 flex items-center justify-center group-hover:scale-110 group-hover:bg-amber-100 group-hover:text-amber-900 transition-all shadow-2xs">
-                <Megaphone className="w-3.5 h-3.5" />
+              <div className="w-8 h-8 rounded-xl bg-rose-100/80 border border-rose-200/60 flex items-center justify-center group-hover:scale-110 group-hover:bg-rose-200/90 group-hover:-translate-y-0.5 transition-all shadow-2xs">
+                <NavGrievance3DIcon className="w-6 h-6 drop-shadow-xs" />
               </div>
               <span className="text-[11px] font-bold tracking-tight whitespace-nowrap text-amber-900">
                 {t('navGrievances')}
@@ -585,42 +838,31 @@ export default function PublicWebsitePage() {
           </nav>
 
           {/* Right Action Controls */}
-          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-            <LanguageSwitcher variant="light" mode="segmented" />
+          <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+            {/* Desktop / Tablet Segmented Language Switcher */}
+            <div className="hidden sm:block">
+              <LanguageSwitcher variant="light" mode="segmented" />
+            </div>
 
-            {/* Watch OTT • Live Streaming CTA Button */}
-            <Link
-              href="/ott"
-              className="hidden sm:inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-red-600 via-rose-600 to-amber-600 hover:from-red-700 hover:via-rose-700 hover:to-amber-700 text-white shadow-sm shadow-red-600/30 transition active:scale-95 group text-left cursor-pointer shrink-0"
-              title={lang === 'mr' ? 'ओटीटी थेट प्रक्षेपण पहा' : lang === 'hi' ? 'ओटीटी लाइव प्रसारण देखें' : 'Watch OTT • Live Streaming'}
-            >
-              <div className="w-5 h-5 rounded-md bg-white/20 flex items-center justify-center shrink-0">
-                <Tv className="w-3.5 h-3.5 text-white" />
-              </div>
-              <div className="flex flex-col leading-none">
-                <span className="text-[11px] font-black tracking-tight whitespace-nowrap">
-                  Watch OTT
-                </span>
-                <span className="text-[9px] font-bold text-amber-200 whitespace-nowrap flex items-center gap-1 mt-0.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
-                  {lang === 'mr' ? '• थेट प्रक्षेपण' : lang === 'hi' ? '• लाइव स्ट्रीमिंग' : '• Live Streaming'}
-                </span>
-              </div>
-            </Link>
+            {/* Mobile Compact Dropdown Language Switcher */}
+            <div className="block sm:hidden">
+              <LanguageSwitcher variant="light" mode="dropdown" className="text-[11px]" />
+            </div>
 
-            {/* Login Button */}
+            {/* Login Button - Perfectly sized, never cut off! */}
             <Link
               href="/login"
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition shadow-xs cursor-pointer active:scale-95"
+              className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-[11px] sm:text-xs font-bold transition shadow-xs cursor-pointer active:scale-95 shrink-0 whitespace-nowrap"
+              title={lang === 'mr' ? 'लॉगिन' : lang === 'hi' ? 'लॉगिन' : 'Login'}
             >
-              <LogIn className="w-3.5 h-3.5" />
+              <LogIn className="w-3.5 h-3.5 shrink-0" />
               <span>{lang === 'mr' ? 'लॉगिन' : lang === 'hi' ? 'लॉगिन' : 'Login'}</span>
             </Link>
 
             {/* Mobile Menu Toggle Button */}
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="lg:hidden p-2 rounded-xl bg-[#FAF7F2] border border-[#E5DBCA] text-slate-800 hover:bg-amber-50 active:scale-95 transition cursor-pointer flex items-center justify-center shrink-0"
+              className="lg:hidden p-1.5 sm:p-2 rounded-xl bg-[#FAF7F2] border border-[#E5DBCA] text-slate-800 hover:bg-amber-50 active:scale-95 transition cursor-pointer flex items-center justify-center shrink-0"
               aria-label="Toggle navigation menu"
             >
               {mobileMenuOpen ? <X className="w-5 h-5 text-rose-600" /> : <Menu className="w-5 h-5 text-slate-800" />}
@@ -682,8 +924,10 @@ export default function PublicWebsitePage() {
                   onClick={() => setMobileMenuOpen(false)}
                   className="flex items-center justify-between p-3 rounded-2xl bg-amber-50 text-amber-900 font-black border border-amber-200/80 shadow-2xs"
                 >
-                  <span className="flex items-center gap-2.5">
-                    <span className="text-base">🏠</span>
+                  <span className="flex items-center gap-3">
+                    <span className="w-9 h-9 rounded-xl bg-amber-100/80 border border-amber-200 flex items-center justify-center shrink-0 shadow-2xs">
+                      <NavHome3DIcon className="w-6 h-6" />
+                    </span>
                     <span>{t('navHome')}</span>
                   </span>
                   <ChevronRight className="w-4 h-4 text-amber-600" />
@@ -694,8 +938,10 @@ export default function PublicWebsitePage() {
                   onClick={() => setMobileMenuOpen(false)}
                   className="flex items-center justify-between p-3 rounded-2xl hover:bg-[#FAF7F2] border border-transparent hover:border-[#E5DBCA] transition"
                 >
-                  <span className="flex items-center gap-2.5">
-                    <span className="w-8 h-8 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center text-sm font-black">🏢</span>
+                  <span className="flex items-center gap-3">
+                    <span className="w-9 h-9 rounded-xl bg-blue-100/80 border border-blue-200 flex items-center justify-center shrink-0 shadow-2xs">
+                      <NavCompany3DIcon className="w-6 h-6" />
+                    </span>
                     <span>{t('navCompanyInformation')}</span>
                   </span>
                   <ChevronRight className="w-4 h-4 text-slate-400" />
@@ -706,8 +952,10 @@ export default function PublicWebsitePage() {
                   onClick={() => setMobileMenuOpen(false)}
                   className="flex items-center justify-between p-3 rounded-2xl hover:bg-[#FAF7F2] border border-transparent hover:border-[#E5DBCA] transition"
                 >
-                  <span className="flex items-center gap-2.5">
-                    <span className="w-8 h-8 rounded-xl bg-blue-100 text-blue-800 flex items-center justify-center text-sm font-black">ℹ️</span>
+                  <span className="flex items-center gap-3">
+                    <span className="w-9 h-9 rounded-xl bg-cyan-100/80 border border-cyan-200 flex items-center justify-center shrink-0 shadow-2xs">
+                      <NavAbout3DIcon className="w-6 h-6" />
+                    </span>
                     <span>{t('navAboutUsExact')}</span>
                   </span>
                   <ChevronRight className="w-4 h-4 text-slate-400" />
@@ -718,8 +966,10 @@ export default function PublicWebsitePage() {
                   onClick={() => setMobileMenuOpen(false)}
                   className="flex items-center justify-between p-3 rounded-2xl hover:bg-[#FAF7F2] border border-transparent hover:border-[#E5DBCA] transition"
                 >
-                  <span className="flex items-center gap-2.5">
-                    <span className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center text-sm font-black">📞</span>
+                  <span className="flex items-center gap-3">
+                    <span className="w-9 h-9 rounded-xl bg-emerald-100/80 border border-emerald-200 flex items-center justify-center shrink-0 shadow-2xs">
+                      <NavContact3DIcon className="w-6 h-6" />
+                    </span>
                     <span>{t('navContactExact')}</span>
                   </span>
                   <ChevronRight className="w-4 h-4 text-slate-400" />
@@ -730,8 +980,10 @@ export default function PublicWebsitePage() {
                   onClick={() => setMobileMenuOpen(false)}
                   className="flex items-center justify-between p-3 rounded-2xl hover:bg-[#FAF7F2] border border-transparent hover:border-[#E5DBCA] transition"
                 >
-                  <span className="flex items-center gap-2.5">
-                    <span className="w-8 h-8 rounded-xl bg-orange-100 text-orange-800 flex items-center justify-center text-sm font-black">📰</span>
+                  <span className="flex items-center gap-3">
+                    <span className="w-9 h-9 rounded-xl bg-orange-100/80 border border-orange-200 flex items-center justify-center shrink-0 shadow-2xs">
+                      <NavNews3DIcon className="w-6 h-6" />
+                    </span>
                     <span>{t('navNewsExact')}</span>
                   </span>
                   <span className="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-bold">३६ जिल्हे</span>
@@ -742,8 +994,10 @@ export default function PublicWebsitePage() {
                   onClick={() => setMobileMenuOpen(false)}
                   className="flex items-center justify-between p-3 rounded-2xl hover:bg-[#FAF7F2] border border-transparent hover:border-[#E5DBCA] transition"
                 >
-                  <span className="flex items-center gap-2.5">
-                    <span className="w-8 h-8 rounded-xl bg-purple-100 text-purple-800 flex items-center justify-center text-sm font-black">📌</span>
+                  <span className="flex items-center gap-3">
+                    <span className="w-9 h-9 rounded-xl bg-purple-100/80 border border-purple-200 flex items-center justify-center shrink-0 shadow-2xs">
+                      <NavInfoService3DIcon className="w-6 h-6" />
+                    </span>
                     <span>{t('navInformationExact')}</span>
                   </span>
                   <ChevronRight className="w-4 h-4 text-slate-400" />
@@ -754,8 +1008,10 @@ export default function PublicWebsitePage() {
                   onClick={() => setMobileMenuOpen(false)}
                   className="flex items-center justify-between p-3 rounded-2xl hover:bg-[#FAF7F2] border border-transparent hover:border-[#E5DBCA] transition text-amber-900"
                 >
-                  <span className="flex items-center gap-2.5">
-                    <span className="w-8 h-8 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center text-sm font-black">📢</span>
+                  <span className="flex items-center gap-3">
+                    <span className="w-9 h-9 rounded-xl bg-rose-100/80 border border-rose-200 flex items-center justify-center shrink-0 shadow-2xs">
+                      <NavGrievance3DIcon className="w-6 h-6" />
+                    </span>
                     <span>{t('navGrievances')}</span>
                   </span>
                   <ChevronRight className="w-4 h-4 text-slate-400" />
@@ -1862,6 +2118,7 @@ export default function PublicWebsitePage() {
         </div>
       )}
 
+      </div>
     </div>
   );
 }
