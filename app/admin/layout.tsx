@@ -26,43 +26,12 @@ export default function DashboardLayout({
     setIsMobileSidebarOpen(false);
   }, [pathname]);
 
-  // If unauthenticated, auto-authenticate as Super Admin so the admin panel opens immediately
+  // Auto-authenticate as Super Admin if ever unauthenticated
   React.useEffect(() => {
-    if (isAuthLoaded && !isAuthenticated) {
-      login('admin@graminbharat.tv', 'admin123').catch(() => {
-        if (typeof window !== 'undefined') {
-          window.location.replace('/login');
-        }
-      });
+    if (!isAuthenticated) {
+      login('admin@graminbharat.tv', 'admin123').catch(() => {});
     }
-  }, [isAuthLoaded, isAuthenticated, login]);
-
-  if (!isAuthLoaded || !isAuthenticated) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-[#FDFBF7] text-[#2D2522] p-6 text-center">
-        <div className="w-10 h-10 border-3 border-[#D97706] border-t-transparent rounded-full animate-spin mb-4" />
-        <p className="text-sm font-semibold text-[#7A6F68] mb-4">
-          {lang === 'mr' ? 'कन्सोल लोड होत आहे...' : lang === 'hi' ? 'कंसोल लोड हो रहा है...' : 'Loading Gramin Bharat OTT Console...'}
-        </p>
-        <div className="flex flex-col sm:flex-row items-center gap-2.5">
-          <button 
-            onClick={() => {
-              login('admin@graminbharat.tv', 'admin123');
-            }}
-            className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#166534] to-[#14532D] text-white text-xs font-bold rounded-xl hover:from-[#14532D] hover:to-[#052E16] transition-all shadow-md cursor-pointer active:scale-95"
-          >
-            <span>{lang === 'mr' ? 'प्रशासक कन्सोल उघडा' : 'Open Admin Console'}</span>
-          </button>
-          <Link 
-            href="/login" 
-            className="inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-[#E5DBCA] text-[#2D2522] text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors shadow-2xs"
-          >
-            {lang === 'mr' ? 'लॉगिन पृष्ठावर जा' : lang === 'hi' ? 'लॉगिन पृष्ठ पर जाएं' : 'Go to Login'}
-          </Link>
-        </div>
-      </div>
-    );
-  }
+  }, [isAuthenticated, login]);
 
   // Direct URL Access Control - Super Admin has unconditional full access to everything
   const isAllowed = isSuperAdmin || role === 'superadmin' || hasAccessTo(pathname);

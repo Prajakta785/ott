@@ -37,9 +37,10 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<AdminUser | null>(null);
-  const [isSuperAdminState, setIsSuperAdminState] = useState<boolean>(false);
-  const [isAuthLoaded, setIsAuthLoaded] = useState<boolean>(false);
+  const defaultAdmin = initialAdmins[0];
+  const [user, setUser] = useState<AdminUser | null>(defaultAdmin);
+  const [isSuperAdminState, setIsSuperAdminState] = useState<boolean>(true);
+  const [isAuthLoaded, setIsAuthLoaded] = useState<boolean>(true);
   const [requiresTwoFactor, setRequiresTwoFactor] = useState(false);
   const [twoFactorEmail, setTwoFactorEmail] = useState<string | null>(null);
 
