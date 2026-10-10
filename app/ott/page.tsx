@@ -117,8 +117,8 @@ export default function OTTPlatformPage() {
             name: 'राहुल पाटील',
             phone: '+91 98221 44520',
             createdAt: new Date().toISOString(),
-            subscriptionStatus: 'free',
-            planName: 'Free User',
+            subscriptionStatus: 'active',
+            planName: 'सुवर्ण वार्षिक VIP (Annual 4K)',
             devices: [
               { deviceId: 'dev-1', deviceName: 'Samsung 4K Android TV', platform: 'android-tv', lastLogin: 'Just now' },
               { deviceId: 'dev-2', deviceName: 'OnePlus 12 (Mobile)', platform: 'android', lastLogin: 'Yesterday' }

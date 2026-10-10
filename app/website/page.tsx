@@ -1004,11 +1004,6 @@ export default function PublicWebsitePage() {
               <div
                 key={item.id}
                 onClick={() => {
-                  if (item.isPremium) {
-                    // It's premium, redirect to OTT platform where subscriptions are handled
-                    window.location.href = '/ott';
-                    return;
-                  }
                   if (item.videoId) setActivePlayingContent(item);
                   else window.location.href = '/ott';
                 }}
@@ -1031,15 +1026,10 @@ export default function PublicWebsitePage() {
                   </div>
 
                   {/* Quality & Type Badges */}
-                  <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5 flex-wrap">
+                  <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5">
                     <span className="px-2 py-0.5 rounded-md bg-black/70 backdrop-blur-md text-[9px] font-black text-amber-300 border border-white/20">
                       {item.type === 'movie' ? 'चित्रपट (Movie)' : 'मालिका (Series)'}
                     </span>
-                    {item.isPremium && (
-                      <span className="px-2 py-0.5 rounded-md bg-gradient-to-r from-rose-600 to-amber-600 text-white text-[9px] font-black shadow-lg">
-                        VIP
-                      </span>
-                    )}
                   </div>
                   <div className="absolute top-2.5 right-2.5">
                     <span className="px-2 py-0.5 rounded-md bg-rose-600 text-white text-[9px] font-black shadow-xs">

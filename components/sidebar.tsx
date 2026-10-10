@@ -650,7 +650,7 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   return (
     <>
       {/* Desktop Persistent Sidebar */}
-      <aside className="w-64 border-r border-[#E5DBCA] bg-[#FAF7F2] flex-col shrink-0 min-h-screen hidden sm:flex select-none">
+      <aside className="w-64 border-r border-[#E5DBCA] bg-[#FAF7F2] flex-col shrink-0 h-full hidden sm:flex select-none">
         {renderContent(false)}
       </aside>
 

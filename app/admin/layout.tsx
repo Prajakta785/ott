@@ -44,7 +44,7 @@ export default function DashboardLayout({
   ].filter(item => isSuperAdmin || role === 'superadmin' || hasAccessTo(item.href));
 
   return (
-    <div className="flex min-h-screen bg-background text-[#2D2522]">
+    <div className="flex h-screen overflow-hidden bg-background text-[#2D2522]">
       <Sidebar 
         isOpen={isMobileSidebarOpen} 
         onClose={() => setIsMobileSidebarOpen(false)} 
