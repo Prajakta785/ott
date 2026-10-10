@@ -230,8 +230,10 @@ export class FirestoreService {
         if (!snap.empty) {
           const items = snap.docs.map(d => ({ id: d.id, ...d.data() } as ContentItem));
           const filtered = filterValidItems(items);
-          setLocalStore(STORAGE_KEYS.CONTENT, filtered);
-          return type ? filtered.filter(c => c.type === type) : filtered;
+          if (filtered.length > 0) {
+            setLocalStore(STORAGE_KEYS.CONTENT, filtered);
+            return type ? filtered.filter(c => c.type === type) : filtered;
+          }
         }
       } catch (e) {
         console.warn('Firestore getContent fallback to server API:', e);
@@ -247,8 +249,10 @@ export class FirestoreService {
           const json = await res.json();
           if (json.data && Array.isArray(json.data)) {
             all = filterValidItems(json.data);
-            setLocalStore(STORAGE_KEYS.CONTENT, all);
-            return type ? all.filter(c => c.type === type) : all;
+            if (all.length > 0) {
+              setLocalStore(STORAGE_KEYS.CONTENT, all);
+              return type ? all.filter(c => c.type === type) : all;
+            }
           }
         }
       } catch {}
@@ -460,8 +464,10 @@ export class FirestoreService {
         if (snap && !snap.empty) {
           const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as LiveChannel));
           const filtered = filterDeleted(list);
-          setLocalStore(STORAGE_KEYS.LIVE_CHANNELS, filtered);
-          return filtered;
+          if (filtered.length > 0) {
+            setLocalStore(STORAGE_KEYS.LIVE_CHANNELS, filtered);
+            return filtered;
+          }
         }
       } catch (e) {
         console.warn('Firestore getLiveChannels fallback notice:', e);
