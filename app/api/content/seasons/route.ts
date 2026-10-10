@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSeasons, saveServerSeason, deleteServerSeason } from '@/lib/server-store';
-import { syncDocToFirestore, deleteDocFromFirestore, fetchDocsFromFirestore } from '@/lib/firestore-admin-sync';
+import { getServerSeasons, saveServerSeason, deleteServerSeason, getServerEpisodes, deleteServerEpisode } from '@/lib/server-store';
+import { syncDocToFirestore, deleteDocFromFirestore, fetchDocsFromFirestore, recordDeletedContentInFirestore } from '@/lib/firestore-admin-sync';
+import { bunnyService } from '@/lib/bunny-service';
 import { Season } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
@@ -108,14 +109,47 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'seriesId and seasonId are required' }, { status: 400 });
     }
 
+    // 1. Delete all episodes in this season (including their Bunny videos)
+    const episodes = getServerEpisodes(seriesId, seasonId);
+    if (episodes && episodes.length > 0) {
+      for (const ep of episodes) {
+        if (ep.videoId) {
+          try {
+            await bunnyService.deleteVideo(ep.videoId);
+          } catch (e) {
+            console.warn(`Bunny episode video ${ep.videoId} delete notice:`, e);
+          }
+        }
+        deleteServerEpisode(ep.id);
+        await deleteDocFromFirestore(`content/${encodeURIComponent(seriesId)}/seasons/${encodeURIComponent(seasonId)}/episodes`, ep.id);
+        await recordDeletedContentInFirestore(ep.id, {
+          id: ep.id,
+          seriesId,
+          seasonId,
+          videoId: ep.videoId || '',
+          type: 'episode',
+          deletedAt: new Date().toISOString(),
+        });
+      }
+    }
+
+    // 2. Delete season from server store
     deleteServerSeason(seasonId);
 
-    // Delete from Cloud Firestore subcollection
+    // 3. Delete season from Cloud Firestore subcollection
     await deleteDocFromFirestore(`content/${encodeURIComponent(seriesId)}/seasons`, seasonId);
+
+    // 4. Record season deletion
+    await recordDeletedContentInFirestore(seasonId, {
+      id: seasonId,
+      seriesId,
+      type: 'season',
+      deletedAt: new Date().toISOString(),
+    });
 
     return NextResponse.json({
       success: true,
-      message: 'Season deleted from server and Firestore'
+      message: 'Season and all associated episodes deleted from Bunny.net, server store, and Firestore'
     }, {
       headers: {
         'Access-Control-Allow-Origin': '*',

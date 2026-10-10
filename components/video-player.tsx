@@ -14,13 +14,17 @@ import {
   X,
   Gauge,
   Check,
-  Sparkles
+  Sparkles,
+  Headphones,
+  Music
 } from 'lucide-react';
 import { useLanguage } from '@/lib/i18n';
 import { bunnyService } from '@/lib/bunny-service';
 
 export interface VideoPlayerProps {
   src: string;
+  audioSrc?: string;
+  audioTitle?: string;
   poster?: string;
   title?: string;
   subtitle?: string;
@@ -31,6 +35,8 @@ export interface VideoPlayerProps {
 
 export function VideoPlayer({
   src,
+  audioSrc,
+  audioTitle,
   poster,
   title = '',
   subtitle,
@@ -40,6 +46,7 @@ export function VideoPlayer({
 }: VideoPlayerProps) {
   const { t, lang } = useLanguage();
   const videoRef = useRef<HTMLVideoElement>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const hlsInstanceRef = useRef<any>(null);
 
@@ -55,14 +62,32 @@ export function VideoPlayer({
   const [showSpeedMenu, setShowSpeedMenu] = useState(false);
   const [currentBitrate, setCurrentBitrate] = useState('Bunny ABR (Adaptive)');
   const [isLoadingStream, setIsLoadingStream] = useState(true);
+  const [isAudioTrackEnabled, setIsAudioTrackEnabled] = useState<boolean>(true);
+  const [forceNativePlayer, setForceNativePlayer] = useState(false);
 
   // Resolve Bunny Stream, Mediadelivery Embed, HLS or MP4 source
   const playbackInfo = bunnyService.resolvePlaybackUrls(src);
+  const isUsingEmbed = playbackInfo.isEmbed && !audioSrc && !forceNativePlayer;
   const finalSource = (playbackInfo as any).proxyUrl || playbackInfo.hlsUrl || playbackInfo.directUrl || (
     isLive 
       ? 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8' 
       : 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4'
   );
+
+  // Sync audio track volume & mute state
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.volume = volume;
+      audioRef.current.muted = isMuted || !isAudioTrackEnabled;
+    }
+  }, [volume, isMuted, isAudioTrackEnabled]);
+
+  // Sync audio playback speed
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.playbackRate = playbackSpeed;
+    }
+  }, [playbackSpeed]);
 
   // Load HLS.js or fallback dynamically
   useEffect(() => {
@@ -70,7 +95,7 @@ export function VideoPlayer({
     const video = videoRef.current;
 
     // If using Bunny Mediadelivery Embed iframe, let iframe handle playback
-    if (playbackInfo.isEmbed) {
+    if (isUsingEmbed) {
       setIsLoadingStream(false);
       setCurrentBitrate('Bunny Stream 4K');
       return;
@@ -190,8 +215,11 @@ export function VideoPlayer({
         hlsInstanceRef.current.destroy();
         hlsInstanceRef.current = null;
       }
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
     };
-  }, [finalSource, playbackInfo.isEmbed, autoPlay]);
+  }, [finalSource, isUsingEmbed, autoPlay]);
 
   const togglePlay = () => {
     const video = videoRef.current;
@@ -199,16 +227,27 @@ export function VideoPlayer({
     if (isPlaying) {
       video.pause();
       setIsPlaying(false);
+      audioRef.current?.pause();
     } else {
-      video.play().then(() => setIsPlaying(true)).catch(() => {});
+      video.play().then(() => {
+        setIsPlaying(true);
+        if (audioRef.current && isAudioTrackEnabled) {
+          audioRef.current.currentTime = video.currentTime;
+          audioRef.current.play().catch(() => {});
+        }
+      }).catch(() => {});
     }
   };
 
   const toggleMute = () => {
     const video = videoRef.current;
     if (!video) return;
-    video.muted = !isMuted;
-    setIsMuted(!isMuted);
+    const newMuted = !isMuted;
+    video.muted = newMuted;
+    setIsMuted(newMuted);
+    if (audioRef.current) {
+      audioRef.current.muted = newMuted || !isAudioTrackEnabled;
+    }
   };
 
   const handleVolumeChange = (newVol: number) => {
@@ -216,7 +255,12 @@ export function VideoPlayer({
     if (!video) return;
     video.volume = newVol;
     setVolume(newVol);
-    setIsMuted(newVol === 0);
+    const muted = newVol === 0;
+    setIsMuted(muted);
+    if (audioRef.current) {
+      audioRef.current.volume = newVol;
+      audioRef.current.muted = muted || !isAudioTrackEnabled;
+    }
   };
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -224,6 +268,9 @@ export function VideoPlayer({
     if (!video) return;
     const time = parseFloat(e.target.value);
     video.currentTime = time;
+    if (audioRef.current && isAudioTrackEnabled) {
+      audioRef.current.currentTime = time;
+    }
     setCurrentTime(time);
   };
 
@@ -288,37 +335,93 @@ export function VideoPlayer({
       className="relative w-full aspect-video bg-black rounded-3xl overflow-hidden shadow-2xl select-none group border border-slate-800"
     >
       {/* Video Element or Bunny Mediadelivery Embed Player */}
-      {playbackInfo.isEmbed ? (
-        <iframe
-          src={playbackInfo.embedUrl}
-          loading="lazy"
-          className="w-full h-full border-0 absolute inset-0 z-0"
-          allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture; fullscreen;"
-          allowFullScreen
-          onLoad={() => setIsLoadingStream(false)}
-        />
+      {isUsingEmbed ? (
+        <div className="relative w-full h-full">
+          <iframe
+            src={playbackInfo.embedUrl}
+            loading="lazy"
+            className="w-full h-full border-0 absolute inset-0 z-0"
+            allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture; fullscreen;"
+            allowFullScreen
+            onLoad={() => setIsLoadingStream(false)}
+          />
+          <button
+            type="button"
+            onClick={() => setForceNativePlayer(true)}
+            className="absolute top-3 right-3 z-20 px-2.5 py-1 bg-black/60 hover:bg-black/90 text-white/80 hover:text-white rounded-lg text-[10px] font-bold backdrop-blur-md transition opacity-0 group-hover:opacity-100 flex items-center gap-1 shadow-sm cursor-pointer"
+            title={lang === 'mr' ? 'डायरेक्ट प्लेअर वापरा' : 'Switch to Direct Player'}
+          >
+            <Sparkles className="w-3 h-3 text-amber-400" />
+            <span>{lang === 'mr' ? 'डायरेक्ट प्लेअर' : 'Direct Player'}</span>
+          </button>
+        </div>
       ) : (
-        <video
-          ref={videoRef}
-          poster={currentTime > 0 || isPlaying ? undefined : poster}
-          playsInline
-          onClick={togglePlay}
-          onCanPlay={() => setIsLoadingStream(false)}
-          onPlay={() => setIsPlaying(true)}
-          onPause={() => setIsPlaying(false)}
-          onPlaying={() => {
-            setIsLoadingStream(false);
-            setIsPlaying(true);
-          }}
-          onTimeUpdate={() => videoRef.current && setCurrentTime(videoRef.current.currentTime)}
-          onLoadedMetadata={() => videoRef.current && setDuration(videoRef.current.duration)}
-          onEnded={() => setIsPlaying(false)}
-          className="w-full h-full object-contain cursor-pointer"
-        />
+        <>
+          <video
+            ref={videoRef}
+            poster={currentTime > 0 || isPlaying ? undefined : poster}
+            playsInline
+            onClick={togglePlay}
+            onCanPlay={() => setIsLoadingStream(false)}
+            onPlay={() => {
+              setIsPlaying(true);
+              if (audioRef.current && isAudioTrackEnabled) {
+                audioRef.current.currentTime = videoRef.current?.currentTime || 0;
+                audioRef.current.play().catch(() => {});
+              }
+            }}
+            onPause={() => {
+              setIsPlaying(false);
+              audioRef.current?.pause();
+            }}
+            onPlaying={() => {
+              setIsLoadingStream(false);
+              setIsPlaying(true);
+              if (audioRef.current && isAudioTrackEnabled && audioRef.current.paused) {
+                audioRef.current.play().catch(() => {});
+              }
+            }}
+            onTimeUpdate={() => {
+              if (videoRef.current) {
+                const cur = videoRef.current.currentTime;
+                setCurrentTime(cur);
+                if (audioRef.current && isAudioTrackEnabled) {
+                  if (Math.abs(audioRef.current.currentTime - cur) > 0.35) {
+                    audioRef.current.currentTime = cur;
+                  }
+                }
+              }
+            }}
+            onSeeking={() => {
+              if (videoRef.current && audioRef.current) {
+                audioRef.current.currentTime = videoRef.current.currentTime;
+              }
+            }}
+            onSeeked={() => {
+              if (videoRef.current && audioRef.current) {
+                audioRef.current.currentTime = videoRef.current.currentTime;
+              }
+            }}
+            onLoadedMetadata={() => videoRef.current && setDuration(videoRef.current.duration)}
+            onEnded={() => {
+              setIsPlaying(false);
+              audioRef.current?.pause();
+            }}
+            className="w-full h-full object-contain cursor-pointer"
+          />
+          {audioSrc && (
+            <audio
+              ref={audioRef}
+              src={audioSrc}
+              preload="auto"
+              onEnded={() => {}}
+            />
+          )}
+        </>
       )}
 
       {/* Loading Spinner */}
-      {isLoadingStream && !playbackInfo.isEmbed && (
+      {isLoadingStream && !isUsingEmbed && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm pointer-events-none z-10">
           <div className="w-12 h-12 rounded-full border-4 border-rose-500/20 border-t-rose-600 animate-spin mb-3" />
           <p className="text-white text-xs font-bold tracking-wider">{t('loadingStream')}</p>
@@ -345,6 +448,12 @@ export function VideoPlayer({
                 {subtitle && <p className="text-slate-300 text-[10px] drop-shadow">{subtitle}</p>}
               </div>
             )}
+            {audioSrc && (
+              <span className="hidden md:flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-950/80 backdrop-blur-md text-emerald-300 border border-emerald-500/40 text-[10px] font-bold shadow-xs">
+                <Music className="w-3 h-3 text-emerald-400 animate-pulse" />
+                <span>{audioTitle || (lang === 'mr' ? 'ऑडिओ कनेक्टेड' : lang === 'hi' ? 'ऑडियो कनेक्टेड' : 'Audio Track Active')}</span>
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-2 pointer-events-auto">
@@ -367,7 +476,7 @@ export function VideoPlayer({
       )}
 
       {/* Center Big Play Button (when paused, only for HTML5 video) */}
-      {!isPlaying && !isLoadingStream && !playbackInfo.isEmbed && (
+      {!isPlaying && !isLoadingStream && !isUsingEmbed && (
         <button
           onClick={togglePlay}
           className="absolute inset-0 m-auto w-16 h-16 rounded-full bg-rose-600/90 hover:bg-rose-600 text-white flex items-center justify-center transition shadow-2xl hover:scale-110 cursor-pointer z-10 backdrop-blur-sm"
@@ -377,7 +486,7 @@ export function VideoPlayer({
       )}
 
       {/* Bottom Controls Bar (only for HTML5 video) */}
-      {!playbackInfo.isEmbed && (
+      {!isUsingEmbed && (
       <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/90 via-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 space-y-2 z-20">
         {/* Timeline Slider (for VOD) */}
         {!isLive && (
@@ -420,6 +529,39 @@ export function VideoPlayer({
                 className="w-16 h-1 bg-white/30 rounded-lg appearance-none cursor-pointer accent-rose-500 hidden group-hover/vol:block transition"
               />
             </div>
+
+            {/* Audio Track Toggle (When external audio track is attached) */}
+            {audioSrc && (
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !isAudioTrackEnabled;
+                  setIsAudioTrackEnabled(next);
+                  if (audioRef.current) {
+                    audioRef.current.muted = !next || isMuted;
+                    if (next && isPlaying) {
+                      audioRef.current.currentTime = videoRef.current?.currentTime || 0;
+                      audioRef.current.play().catch(() => {});
+                    } else {
+                      audioRef.current.pause();
+                    }
+                  }
+                }}
+                className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-[10px] font-bold border transition cursor-pointer ${
+                  isAudioTrackEnabled 
+                    ? 'bg-emerald-600/30 text-emerald-300 border-emerald-500/50 shadow-xs' 
+                    : 'bg-white/10 text-slate-400 border-white/10 hover:text-white'
+                }`}
+                title={lang === 'mr' ? 'जोडलेला ऑडिओ ट्रॅक (चालू/बंद)' : 'Connected Audio Track (On/Off)'}
+              >
+                <Headphones className={`w-3.5 h-3.5 ${isAudioTrackEnabled ? 'text-emerald-400' : 'text-slate-400'}`} />
+                <span className="hidden sm:inline">
+                  {isAudioTrackEnabled 
+                    ? (lang === 'mr' ? 'ऑडिओ चालू' : 'Audio On') 
+                    : (lang === 'mr' ? 'ऑडिओ म्यूट' : 'Audio Off')}
+                </span>
+              </button>
+            )}
 
             {/* Live Indicator text */}
             {isLive && (

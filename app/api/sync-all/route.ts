@@ -6,7 +6,7 @@ import {
   saveServerLiveChannel,
   readServerStore
 } from '@/lib/server-store';
-import { syncDocToFirestore } from '@/lib/firestore-admin-sync';
+import { syncDocToFirestore, getDeletedContentIds } from '@/lib/firestore-admin-sync';
 import { bunnyService } from '@/lib/bunny-service';
 import { ContentItem, Season, Episode, LiveChannel, Banner } from '@/lib/types';
 
@@ -15,6 +15,7 @@ export const dynamic = 'force-dynamic';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
+    const deletedIds = await getDeletedContentIds();
     const results = {
       contentSynced: 0,
       seasonsSynced: 0,
@@ -23,10 +24,12 @@ export async function POST(req: NextRequest) {
       bannersSynced: 0,
     };
 
-    // 1. Sync Content items
+    // 1. Sync Content items (skipping any deleted items)
     if (body.content && Array.isArray(body.content)) {
       for (const raw of body.content) {
         if (!raw.title) continue;
+        if (raw.id && deletedIds.includes(raw.id)) continue;
+
         const rawVideo = raw.videoId || raw.videoUrl || '';
         const videoPlayback = rawVideo ? bunnyService.resolvePlaybackUrls(rawVideo) : null;
 
@@ -53,11 +56,13 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 2. Sync Seasons
+    // 2. Sync Seasons (skipping any deleted seasons)
     if (body.seasons && Array.isArray(body.seasons)) {
       for (const raw of body.seasons) {
         const seriesId = raw.seriesId || raw.contentId;
         if (!seriesId || !raw.title) continue;
+        if (raw.id && (deletedIds.includes(raw.id) || deletedIds.includes(seriesId))) continue;
+
         const season: Season = {
           ...raw,
           id: raw.id || 'sea-' + Date.now().toString(36),
@@ -84,12 +89,14 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 3. Sync Episodes
+    // 3. Sync Episodes (skipping any deleted episodes)
     if (body.episodes && Array.isArray(body.episodes)) {
       for (const raw of body.episodes) {
         const seriesId = raw.seriesId || raw.contentId;
         const seasonId = raw.seasonId;
         if (!seriesId || !seasonId || !raw.title) continue;
+        if (raw.id && (deletedIds.includes(raw.id) || deletedIds.includes(seriesId) || deletedIds.includes(seasonId))) continue;
+
         const durationSeconds = raw.durationSeconds || raw.duration || 2400;
         const rawVideo = raw.videoId || raw.videoUrl || '';
         const videoPlayback = rawVideo ? bunnyService.resolvePlaybackUrls(rawVideo) : null;
@@ -131,10 +138,12 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 4. Sync Live Channels
+    // 4. Sync Live Channels (skipping any deleted channels)
     if (body.liveChannels && Array.isArray(body.liveChannels)) {
       for (const ch of body.liveChannels) {
         if (!ch.name) continue;
+        if (ch.id && deletedIds.includes(ch.id)) continue;
+
         saveServerLiveChannel(ch);
         await syncDocToFirestore('live_channels', ch.id, ch);
         await syncDocToFirestore('liveChannels', ch.id, ch);
@@ -142,10 +151,12 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 5. Sync Banners
+    // 5. Sync Banners (skipping any deleted banners)
     if (body.banners && Array.isArray(body.banners)) {
       for (const b of body.banners) {
         if (!b.title) continue;
+        if (b.id && (deletedIds.includes(b.id) || (b.contentId && deletedIds.includes(b.contentId)))) continue;
+
         await syncDocToFirestore('banners', b.id, b);
         results.bannersSynced++;
       }

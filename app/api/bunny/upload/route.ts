@@ -48,7 +48,7 @@ const STORAGE_READONLY_KEY = process.env.BUNNY_STORAGE_READONLY_KEY || process.e
 
 const STREAM_LIBRARY_ID = process.env.BUNNY_STREAM_LIBRARY_ID || process.env.NEXT_PUBLIC_BUNNY_STREAM_LIBRARY_ID || '767488';
 const STREAM_API_KEY = process.env.BUNNY_STREAM_API_KEY || process.env.NEXT_PUBLIC_BUNNY_API_KEY || 'afb32a68-d916-4eac-83bb2d60a0df-3935-46e4';
-const CDN_HOSTNAME = process.env.BUNNY_CDN_HOSTNAME || process.env.NEXT_PUBLIC_BUNNY_CDN_HOSTNAME || 'vz-1192802e-f33.b-cdn.net';
+const CDN_HOSTNAME = process.env.BUNNY_CDN_HOSTNAME || process.env.NEXT_PUBLIC_BUNNY_CDN_HOSTNAME || 'vz-92cc7e0f-cd7.b-cdn.net';
 
 export async function GET() {
   return NextResponse.json({

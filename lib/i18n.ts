@@ -2488,9 +2488,14 @@ interface LanguageContextType {
 
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
 
-export function LanguageProvider({ children }: { children: React.ReactNode }) {
-  // Default to 'mr' (Marathi) when no preference is saved
-  const [lang, setLangState] = useState<Language>('mr');
+export function LanguageProvider({ 
+  children, 
+  initialLang = 'mr' 
+}: { 
+  children: React.ReactNode; 
+  initialLang?: Language; 
+}) {
+  const [lang, setLangState] = useState<Language>(initialLang);
 
   useEffect(() => {
     try {
@@ -2499,11 +2504,7 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
         setLangState(stored);
         if (typeof document !== 'undefined') {
           document.documentElement.lang = stored;
-        }
-      } else {
-        setLangState('mr');
-        if (typeof document !== 'undefined') {
-          document.documentElement.lang = 'mr';
+          document.cookie = `ott_lang=${stored}; path=/; max-age=31536000; SameSite=Lax`;
         }
       }
     } catch {}
@@ -2515,6 +2516,7 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
           setLangState(current);
           if (typeof document !== 'undefined') {
             document.documentElement.lang = current;
+            document.cookie = `ott_lang=${current}; path=/; max-age=31536000; SameSite=Lax`;
           }
         }
       } catch {}
@@ -2535,6 +2537,7 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem('ott_selected_language', newLang);
       if (typeof document !== 'undefined') {
         document.documentElement.lang = newLang;
+        document.cookie = `ott_lang=${newLang}; path=/; max-age=31536000; SameSite=Lax`;
       }
       window.dispatchEvent(new Event('languagechange_custom'));
     } catch {}

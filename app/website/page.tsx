@@ -47,7 +47,7 @@ import {
   Server
 } from 'lucide-react';
 import { firestoreService } from '@/lib/firestore-service';
-import { ContentItem, Advertisement, LiveChannel } from '@/lib/types';
+import { ContentItem, ContentCategory, Advertisement, LiveChannel, Grievance } from '@/lib/types';
 import { getSafeImageUrl, handleImageError } from '@/lib/image-utils';
 import { VideoPlayer } from '@/components/video-player';
 import { getAllDistricts, getTalukasForDistrict, getVillagesForTaluka } from '@/lib/location-data';
@@ -57,6 +57,7 @@ import { LanguageSwitcher } from '@/components/language-switcher';
 
 export default function PublicWebsitePage() {
   const { lang, t } = useLanguage();
+  const [categories, setCategories] = useState<ContentCategory[]>([]);
   const [newsItems, setNewsItems] = useState<ContentItem[]>([]);
   const [featuredMovies, setFeaturedMovies] = useState<ContentItem[]>([]);
   const [featuredSeries, setFeaturedSeries] = useState<ContentItem[]>([]);
@@ -118,10 +119,11 @@ export default function PublicWebsitePage() {
     async function loadData() {
       setLoading(true);
       try {
-        const [allContent, allAds, allChannels] = await Promise.all([
+        const [allContent, allAds, allChannels, allCategories] = await Promise.all([
           firestoreService.getContent(),
           firestoreService.getAds(),
           firestoreService.getLiveChannels(),
+          firestoreService.getCategories(),
         ]);
 
         const newsList = allContent.filter(c => c.type === 'news' || (c.genres && c.genres.includes('News')));
@@ -133,6 +135,7 @@ export default function PublicWebsitePage() {
         setFeaturedSeries(seriesList);
         setAds(allAds.filter(a => a.status === 'active'));
         setLiveChannels(allChannels || []);
+        setCategories(allCategories || []);
       } catch (err) {
         console.error('Failed to load website content:', err);
       } finally {
@@ -176,7 +179,7 @@ export default function PublicWebsitePage() {
       language: ['मराठी'],
       durationMinutes: 174,
       videoId: '33e80d55-f8ce-4e26-9b9c-4084da8cd816',
-      videoUrl: 'https://vz-1192802e-f33.b-cdn.net/33e80d55-f8ce-4e26-9b9c-4084da8cd816/playlist.m3u8'
+      videoUrl: 'https://vz-92cc7e0f-cd7.b-cdn.net/33e80d55-f8ce-4e26-9b9c-4084da8cd816/playlist.m3u8'
     },
     {
       id: 'mov-pawankhind-02',
@@ -403,7 +406,13 @@ export default function PublicWebsitePage() {
       if (!villageMatch) return false;
     }
     if (selectedCategory !== 'सर्व') {
-      const catMatch = item.subCategory?.includes(selectedCategory) || item.genres?.includes(selectedCategory);
+      const catLower = selectedCategory.toLowerCase();
+      const catMatch = 
+        (item.subCategory && item.subCategory.toLowerCase().includes(catLower)) || 
+        (item.genres && item.genres.some(g => g.toLowerCase().includes(catLower))) ||
+        ((item as any).subCategories && (item as any).subCategories.some((s: string) => s.toLowerCase().includes(catLower))) ||
+        (item.tags && item.tags.some(t => t.toLowerCase().includes(catLower))) ||
+        (item.title && item.title.toLowerCase().includes(catLower));
       if (!catMatch) return false;
     }
     if (searchQuery.trim()) {
@@ -426,13 +435,36 @@ export default function PublicWebsitePage() {
     }, 4000);
   };
 
-  const handleGrievanceSubmit = (e: React.FormEvent) => {
+  const handleGrievanceSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setGrievanceSuccess(true);
-    setTimeout(() => {
-      setGrievanceSuccess(false);
-      setGrievanceForm({ title: '', citizenName: '', contactNumber: '', district: 'Pune (पुणे)', taluka: '', description: '' });
-    }, 4000);
+    if (!grievanceForm.title.trim() || !grievanceForm.citizenName.trim()) return;
+
+    try {
+      const nowIso = new Date().toISOString();
+      const newGrv: Grievance = {
+        id: `grv_${Date.now()}`,
+        citizenName: grievanceForm.citizenName.trim(),
+        contactNumber: grievanceForm.contactNumber.trim(),
+        district: grievanceForm.district || 'महाराष्ट्र',
+        taluka: grievanceForm.taluka.trim() || 'N/A',
+        village: 'N/A',
+        title: grievanceForm.title.trim(),
+        category: 'इतर प्रशासकीय समस्या',
+        description: grievanceForm.description.trim(),
+        status: 'pending',
+        submittedAt: nowIso,
+        createdAt: nowIso,
+      };
+
+      await firestoreService.saveGrievance(newGrv);
+      setGrievanceSuccess(true);
+      setTimeout(() => {
+        setGrievanceSuccess(false);
+        setGrievanceForm({ title: '', citizenName: '', contactNumber: '', district: 'Pune (पुणे)', taluka: '', description: '' });
+      }, 4000);
+    } catch (err) {
+      console.error('Error submitting grievance from website:', err);
+    }
   };
 
   return (
@@ -881,8 +913,8 @@ export default function PublicWebsitePage() {
                         id: 'live_default',
                         channelName: 'Gramin Bharat TV',
                         channelCode: 'gramin_bharat_live',
-                        streamUrl: 'c0a4e45c-b442-4071-b68f-6d8662b5f001',
-                        poster: 'https://images.unsplash.com/photo-1585829365295-ab7cd400c167?w=1200',
+                        streamUrl: 'e6eb731d-a1b1-4885-a40b-54c4e860c78e',
+                        poster: 'https://vz-92cc7e0f-cd7.b-cdn.net/e6eb731d-a1b1-4885-a40b-54c4e860c78e/thumbnail.jpg',
                         logo: '/logo.png',
                         description: 'Live 24x7 satellite broadcast feed',
                         isLive: true,
@@ -972,6 +1004,11 @@ export default function PublicWebsitePage() {
               <div
                 key={item.id}
                 onClick={() => {
+                  if (item.isPremium) {
+                    // It's premium, redirect to OTT platform where subscriptions are handled
+                    window.location.href = '/ott';
+                    return;
+                  }
                   if (item.videoId) setActivePlayingContent(item);
                   else window.location.href = '/ott';
                 }}
@@ -994,10 +1031,15 @@ export default function PublicWebsitePage() {
                   </div>
 
                   {/* Quality & Type Badges */}
-                  <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5">
+                  <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5 flex-wrap">
                     <span className="px-2 py-0.5 rounded-md bg-black/70 backdrop-blur-md text-[9px] font-black text-amber-300 border border-white/20">
                       {item.type === 'movie' ? 'चित्रपट (Movie)' : 'मालिका (Series)'}
                     </span>
+                    {item.isPremium && (
+                      <span className="px-2 py-0.5 rounded-md bg-gradient-to-r from-rose-600 to-amber-600 text-white text-[9px] font-black shadow-lg">
+                        VIP
+                      </span>
+                    )}
                   </div>
                   <div className="absolute top-2.5 right-2.5">
                     <span className="px-2 py-0.5 rounded-md bg-rose-600 text-white text-[9px] font-black shadow-xs">
@@ -1135,17 +1177,33 @@ export default function PublicWebsitePage() {
               { id: 'स्थानिक प्रशासन', label: t('catAdmin') },
               { id: 'बाजारभाव', label: t('catMarket') },
               { id: 'राजकीय', label: t('catPolitics') },
-            ].map((cat) => (
+              ...categories
+                .filter(cat => cat.id !== 'cat-all' && cat.nameMarathi !== 'सर्व' && cat.nameEnglish !== 'All')
+                .map(cat => ({
+                  id: cat.nameMarathi || cat.nameEnglish,
+                  label: lang === 'en' ? (cat.nameEnglish || cat.nameMarathi) : (cat.nameMarathi || cat.nameEnglish),
+                  badge: cat.badgeText
+                }))
+                .filter((item, index, self) => 
+                  !['सर्व', 'शेतकरी बातम्या', 'ग्रामीण विकास', 'स्थानिक प्रशासन', 'बाजारभाव', 'राजकीय'].includes(item.id) &&
+                  index === self.findIndex(t => t.id === item.id)
+                )
+            ].map((cat: { id: string; label: string; badge?: string }) => (
               <button
                 key={cat.id}
                 onClick={() => setSelectedCategory(cat.id)}
-                className={`px-4 py-2 rounded-xl text-xs font-black transition cursor-pointer ${
+                className={`px-4 py-2 rounded-xl text-xs font-black transition cursor-pointer flex items-center gap-1.5 ${
                   selectedCategory === cat.id
                     ? 'bg-slate-900 text-white shadow-sm'
                     : 'bg-white border border-[#E5DBCA] text-slate-600 hover:bg-amber-50 hover:text-amber-900'
                 }`}
               >
-                {cat.label}
+                <span>{cat.label}</span>
+                {cat.badge && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-700 font-bold">
+                    {cat.badge}
+                  </span>
+                )}
               </button>
             ))}
           </div>

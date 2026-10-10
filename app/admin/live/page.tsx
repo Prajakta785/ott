@@ -39,7 +39,7 @@ export default function LiveStreamsPage() {
     channelCode: 'gramin_bharat_live' as 'gramin_bharat_live' | 'namdar_maharashtra_live' | 'custom_live',
     streamUrl: '',
     backupStreamUrl: '',
-    logo: '',
+    logo: '/app_logo.png',
     poster: '',
     description: '',
     isLive: true,
@@ -80,7 +80,7 @@ export default function LiveStreamsPage() {
       channelCode: 'custom_live',
       streamUrl: '',
       backupStreamUrl: '',
-      logo: '',
+      logo: '/app_logo.png',
       poster: '',
       description: '',
       isLive: true,
@@ -93,6 +93,15 @@ export default function LiveStreamsPage() {
     setIsModalOpen(true);
   };
 
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('action') === 'create') {
+        openCreateModal();
+      }
+    }
+  }, []);
+
   const openEditModal = (ch: LiveChannel) => {
     setEditingChannel(ch);
     setFormData({
@@ -100,7 +109,7 @@ export default function LiveStreamsPage() {
       channelCode: ch.channelCode,
       streamUrl: ch.streamUrl,
       backupStreamUrl: ch.backupStreamUrl || '',
-      logo: ch.logo,
+      logo: ch.logo || '/app_logo.png',
       poster: ch.poster,
       description: ch.description,
       isLive: ch.isLive,
@@ -122,7 +131,7 @@ export default function LiveStreamsPage() {
       channelCode: formData.channelCode,
       streamUrl: formData.streamUrl,
       backupStreamUrl: formData.backupStreamUrl,
-      logo: formData.logo || '',
+      logo: formData.logo || '/app_logo.png',
       poster: formData.poster || '',
       description: formData.description,
       isLive: formData.isLive,
@@ -156,13 +165,13 @@ export default function LiveStreamsPage() {
   };
 
   const handleConvertToBunnyStream = async (ch: LiveChannel) => {
-    const bunnyGuid = 'c0a4e45c-b442-4071-b68f-6d8662b5f001';
+    const bunnyGuid = 'e6eb731d-a1b1-4885-a40b-54c4e860c78e';
     const updated: LiveChannel = {
       ...ch,
       streamUrl: bunnyGuid,
       backupStreamUrl: `https://iframe.mediadelivery.net/embed/767488/${bunnyGuid}`,
-      poster: ch.poster || `https://vz-1192802e-f33.b-cdn.net/${bunnyGuid}/thumbnail.jpg`,
-      logo: ch.logo || `https://vz-1192802e-f33.b-cdn.net/${bunnyGuid}/thumbnail.jpg`,
+      poster: ch.poster || `https://vz-92cc7e0f-cd7.b-cdn.net/${bunnyGuid}/thumbnail.jpg`,
+      logo: ch.logo || `https://vz-92cc7e0f-cd7.b-cdn.net/${bunnyGuid}/thumbnail.jpg`,
       isLive: true,
       status: 'active',
       updatedAt: new Date().toISOString(),
@@ -228,8 +237,14 @@ export default function LiveStreamsPage() {
                 {/* Banner Thumbnail & Live Badge */}
                 <div className="relative h-48 w-full bg-slate-900 overflow-hidden group">
                   <img
-                    src={ch.poster}
+                    src={ch.poster || '/brand-horizontal.png'}
                     alt={ch.channelName}
+                    onError={(e) => {
+                      const target = e.currentTarget as HTMLImageElement;
+                      if (!target.src.includes('brand-horizontal.png')) {
+                        target.src = '/brand-horizontal.png';
+                      }
+                    }}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 opacity-80"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-transparent" />
@@ -257,9 +272,15 @@ export default function LiveStreamsPage() {
                   <div className="absolute bottom-4 left-4 right-4">
                     <div className="flex items-center gap-3">
                       <img
-                        src={ch.logo}
+                        src={ch.logo || '/app_logo.png'}
                         alt={ch.channelName}
-                        className="w-12 h-12 rounded-xl object-cover border-2 border-white/30 shadow-md shrink-0"
+                        onError={(e) => {
+                          const target = e.currentTarget as HTMLImageElement;
+                          if (!target.src.includes('app_logo.png')) {
+                            target.src = '/app_logo.png';
+                          }
+                        }}
+                        className="w-12 h-12 rounded-xl object-contain bg-white p-1 border-2 border-white/30 shadow-md shrink-0"
                       />
                       <div className="overflow-hidden text-white">
                         <h3 className="font-black text-lg text-white drop-shadow truncate">
@@ -492,12 +513,12 @@ export default function LiveStreamsPage() {
                           type="button"
                           onClick={() => setFormData({
                             ...formData,
-                            streamUrl: 'c0a4e45c-b442-4071-b68f-6d8662b5f001',
-                            poster: 'https://vz-1192802e-f33.b-cdn.net/c0a4e45c-b442-4071-b68f-6d8662b5f001/thumbnail.jpg'
+                            streamUrl: 'e6eb731d-a1b1-4885-a40b-54c4e860c78e',
+                            poster: 'https://vz-92cc7e0f-cd7.b-cdn.net/e6eb731d-a1b1-4885-a40b-54c4e860c78e/thumbnail.jpg'
                           })}
                           className="mt-1.5 px-3 py-1 bg-[#EA580C] hover:bg-[#C2410C] text-white font-bold rounded-lg cursor-pointer transition shadow-xs"
                         >
-                          ⚡ Bunny Stream वर सेव्ह करा (GUID: c0a4e45c...)
+                          ⚡ Bunny Stream वर सेव्ह करा (GUID: e6eb731d...)
                         </button>
                       </div>
                     </div>

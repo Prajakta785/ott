@@ -63,10 +63,44 @@ const STORAGE_KEYS = {
   NOTIFICATIONS: 'ott_admin_notifications_v12_wiped',
   CATEGORIES: 'ott_admin_categories_v12_wiped',
   COMPANY_INFO: 'ott_admin_company_info_v12_wiped',
+  DELETED_CONTENT: 'ott_admin_deleted_content_v12_wiped',
 };
 
 // In-Memory persistent registry (resilient against localStorage quota and SSR)
 const memCache: Record<string, any> = {};
+
+function getLocalDeletedIds(): string[] {
+  return getLocalStore<string[]>(STORAGE_KEYS.DELETED_CONTENT, []);
+}
+
+function addLocalDeletedId(id: string): void {
+  if (!id) return;
+  const current = getLocalDeletedIds();
+  if (!current.includes(id)) {
+    setLocalStore(STORAGE_KEYS.DELETED_CONTENT, [...current, id]);
+  }
+  if (typeof window !== 'undefined') {
+    fetch('/api/deleted', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    }).catch(() => {});
+  }
+}
+
+// Automatically sync deleted IDs from server store & Cloud Firestore on startup
+if (typeof window !== 'undefined') {
+  fetch('/api/deleted')
+    .then(r => r.json())
+    .then(res => {
+      if (res.success && Array.isArray(res.data)) {
+        const current = getLocalDeletedIds();
+        const merged = Array.from(new Set([...current, ...res.data]));
+        setLocalStore(STORAGE_KEYS.DELETED_CONTENT, merged);
+      }
+    })
+    .catch(() => {});
+}
 
 // Auto purge legacy keys on load
 if (typeof window !== 'undefined') {
@@ -125,6 +159,31 @@ const timeoutPromise = <T>(promise: Promise<T>, ms = 2500): Promise<T> => {
   ]);
 };
 
+/**
+ * Recursively strips undefined fields and undefined array items
+ * to prevent Firestore "Function setDoc() called with invalid data. Unsupported field value: undefined" errors
+ */
+export function cleanForFirestore<T>(data: T): T {
+  if (data === null || data === undefined) {
+    return null as unknown as T;
+  }
+  if (Array.isArray(data)) {
+    return data
+      .filter(item => item !== undefined)
+      .map(item => cleanForFirestore(item)) as unknown as T;
+  }
+  if (typeof data === 'object') {
+    const cleaned: Record<string, any> = {};
+    for (const [key, value] of Object.entries(data as Record<string, any>)) {
+      if (value !== undefined) {
+        cleaned[key] = cleanForFirestore(value);
+      }
+    }
+    return cleaned as T;
+  }
+  return data;
+}
+
 export class FirestoreService {
   private useLive: boolean;
 
@@ -142,44 +201,62 @@ export class FirestoreService {
 
   /* ------------------- CONTENT (Movies, News, Series, Short Films, Podcasts) ------------------- */
   async getContent(type?: ContentType): Promise<ContentItem[]> {
+    const deletedIds = getLocalDeletedIds();
+    const filterValidItems = (list: ContentItem[]) => {
+      return list.filter(c => {
+        // Exclude logically deleted items
+        if (deletedIds.includes(c.id)) return false;
+        
+        // Exclude dummy items and invalid videos (permanently hide from UI)
+        const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(c.videoId || '');
+        const isBunnyStorage = (c.videoId || '').includes('storage.bunnycdn.com') || (c.videoUrl || '').includes('storage.bunnycdn.com');
+        
+        if (c.type === 'series') {
+          if (c.id === 'ser-rang-majha-vegla' || (c.videoId && !isUUID && !isBunnyStorage)) return false;
+          return true;
+        }
+        
+        return isUUID || isBunnyStorage;
+      });
+    };
+
     if (this.useLive && db) {
       try {
         const contentRef = collection(db, 'content');
         const q = type 
-          ? query(contentRef, where('type', '==', type), where('status', '==', 'published')) 
-          : query(contentRef, where('status', '==', 'published'));
+          ? query(contentRef, where('type', '==', type)) 
+          : contentRef;
         const snap = await timeoutPromise(getDocs(q), 3000);
         if (!snap.empty) {
           const items = snap.docs.map(d => ({ id: d.id, ...d.data() } as ContentItem));
-          const localAll = getLocalStore<ContentItem[]>(STORAGE_KEYS.CONTENT, initialContent);
-          const combined = [...items];
-          for (const l of localAll) {
-            if (!combined.some(c => c.id === l.id)) {
-              combined.unshift(l);
-            }
-          }
-          setLocalStore(STORAGE_KEYS.CONTENT, combined);
-          return type ? combined.filter(c => c.type === type) : combined;
+          const filtered = filterValidItems(items);
+          setLocalStore(STORAGE_KEYS.CONTENT, filtered);
+          return type ? filtered.filter(c => c.type === type) : filtered;
         }
       } catch (e) {
-        console.warn('Firestore getContent fallback to local cache:', e);
+        console.warn('Firestore getContent fallback to server API:', e);
       }
     }
 
-    let all = getLocalStore<ContentItem[]>(STORAGE_KEYS.CONTENT, initialContent);
-    if (all.length === 0 && typeof window !== 'undefined') {
+    let all: ContentItem[] = [];
+    if (typeof window !== 'undefined') {
       try {
-        const res = await fetch('/api/content');
+        const endpoint = type ? `/api/content?type=${encodeURIComponent(type)}` : '/api/content';
+        const res = await fetch(endpoint);
         if (res.ok) {
           const json = await res.json();
-          if (json.data && Array.isArray(json.data) && json.data.length > 0) {
-            all = json.data;
+          if (json.data && Array.isArray(json.data)) {
+            all = filterValidItems(json.data);
             setLocalStore(STORAGE_KEYS.CONTENT, all);
+            return type ? all.filter(c => c.type === type) : all;
           }
         }
       } catch {}
     }
-    return type ? all.filter(c => c.type === type) : all;
+
+    all = getLocalStore<ContentItem[]>(STORAGE_KEYS.CONTENT, initialContent);
+    const result = filterValidItems(all);
+    return type ? result.filter(c => c.type === type) : result;
   }
 
   subscribeToContent(callback: (items: ContentItem[]) => void, type?: ContentType): () => void {
@@ -187,21 +264,23 @@ export class FirestoreService {
       try {
         const contentRef = collection(db, 'content');
         const q = type 
-          ? query(contentRef, where('type', '==', type), where('status', '==', 'published')) 
-          : query(contentRef, where('status', '==', 'published'));
+          ? query(contentRef, where('type', '==', type)) 
+          : contentRef;
         return onSnapshot(q, (snap) => {
           const items = snap.docs.map(d => ({ id: d.id, ...d.data() } as ContentItem));
-          if (items.length > 0) {
-            const localAll = getLocalStore<ContentItem[]>(STORAGE_KEYS.CONTENT, initialContent);
-            const combined = [...items];
-            for (const l of localAll) {
-              if (!combined.some(c => c.id === l.id)) {
-                combined.unshift(l);
-              }
+          const deletedIds = getLocalDeletedIds();
+          const filtered = items.filter(c => {
+            if (deletedIds.includes(c.id)) return false;
+            const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(c.videoId || '');
+            const isBunnyStorage = (c.videoId || '').includes('storage.bunnycdn.com') || (c.videoUrl || '').includes('storage.bunnycdn.com');
+            if (c.type === 'series') {
+              if (c.id === 'ser-rang-majha-vegla' || (c.videoId && !isUUID && !isBunnyStorage)) return false;
+              return true;
             }
-            setLocalStore(STORAGE_KEYS.CONTENT, combined);
-            callback(type ? combined.filter(c => c.type === type) : combined);
-          }
+            return isUUID || isBunnyStorage;
+          });
+          setLocalStore(STORAGE_KEYS.CONTENT, filtered);
+          callback(type ? filtered.filter(c => c.type === type) : filtered);
         }, (err) => {
           console.warn('Real-time snapshot listener error:', err);
         });
@@ -213,16 +292,22 @@ export class FirestoreService {
   }
 
   async getContentById(id: string): Promise<ContentItem | null> {
+    if (getLocalDeletedIds().includes(id)) return null;
+
     if (this.useLive && db) {
       try {
         const snap = await timeoutPromise(getDoc(doc(db, 'content', id)), 2000);
-        if (snap.exists()) return { id: snap.id, ...snap.data() } as ContentItem;
+        if (snap.exists()) {
+          const data = { id: snap.id, ...snap.data() } as ContentItem;
+          if (data.status === 'deleted') return null;
+          return data;
+        }
       } catch (e) {
         console.warn('Firestore getContentById fallback:', e);
       }
     }
     const all = getLocalStore<ContentItem[]>(STORAGE_KEYS.CONTENT, initialContent);
-    return all.find(c => c.id === id) || null;
+    return all.find(c => c.id === id && !getLocalDeletedIds().includes(c.id)) || null;
   }
 
   async saveContent(item: ContentItem): Promise<ContentItem> {
@@ -267,7 +352,7 @@ export class FirestoreService {
     }
 
     if (this.useLive && db) {
-      timeoutPromise(setDoc(doc(db, 'content', toSave.id), toSave), 3000)
+      timeoutPromise(setDoc(doc(db, 'content', toSave.id), cleanForFirestore(toSave)), 3000)
         .catch(e => console.warn('Background Firestore save notice:', e));
     }
 
@@ -275,17 +360,37 @@ export class FirestoreService {
   }
 
   async deleteContent(id: string): Promise<void> {
+    addLocalDeletedId(id);
+
     const all = getLocalStore<ContentItem[]>(STORAGE_KEYS.CONTENT, initialContent);
+    const itemToDelete = all.find(c => c.id === id);
+    const videoId = itemToDelete?.videoId || '';
+
     const updated = all.filter(c => c.id !== id);
     setLocalStore(STORAGE_KEYS.CONTENT, updated);
 
+    // Also remove from banners if any banner references this content
+    const banners = getLocalStore<Banner[]>(STORAGE_KEYS.BANNERS, initialBanners);
+    setLocalStore(STORAGE_KEYS.BANNERS, banners.filter(b => b.contentId !== id && b.id !== id));
+
     if (typeof window !== 'undefined') {
       try {
-        await fetch(`/api/content?id=${encodeURIComponent(id)}`, {
+        const queryParams = new URLSearchParams({ id });
+        if (videoId) queryParams.set('videoId', videoId);
+        await fetch(`/api/content?${queryParams.toString()}`, {
           method: 'DELETE',
         });
       } catch (e) {
         console.warn('Server content delete error:', e);
+      }
+
+      // Also directly delete video from Bunny API route if videoId is known
+      if (videoId && !videoId.startsWith('http') && videoId !== 'sample-podcast') {
+        try {
+          fetch(`/api/bunny/videos?guid=${encodeURIComponent(videoId)}`, {
+            method: 'DELETE',
+          }).catch(() => {});
+        } catch {}
       }
 
       try {
@@ -296,11 +401,33 @@ export class FirestoreService {
     if (this.useLive && db) {
       timeoutPromise(deleteDoc(doc(db, 'content', id)), 3000)
         .catch(e => console.warn('Background Firestore delete notice:', e));
+
+      // Also record into users/app_deleted_content in Cloud Firestore
+      try {
+        const delRef = doc(db, 'users', 'app_deleted_content');
+        getDoc(delRef).then(snap => {
+          let list: string[] = [];
+          if (snap.exists()) {
+            list = snap.data()?.deletedIds || [];
+          }
+          if (!list.includes(id)) {
+            list.push(id);
+          }
+          setDoc(delRef, {
+            deletedIds: list,
+            lastDeletedId: id,
+            updatedAt: new Date().toISOString(),
+          }, { merge: true }).catch(() => {});
+        }).catch(() => {});
+      } catch {}
     }
   }
 
   /* ------------------- LIVE TV CHANNELS (Section 3 & 6) ------------------- */
   async getLiveChannels(): Promise<LiveChannel[]> {
+    const deletedIds = getLocalDeletedIds();
+    const filterDeleted = (list: LiveChannel[]) => list.filter(c => !deletedIds.includes(c.id));
+
     // 1. Fast local cache check
     const localChannels = getLocalStore<LiveChannel[]>(STORAGE_KEYS.LIVE_CHANNELS, initialLiveChannels);
 
@@ -310,9 +437,10 @@ export class FirestoreService {
         const res = await timeoutPromise(fetch('/api/live'), 1500);
         if (res.ok) {
           const json = await res.json();
-          if (json.data && Array.isArray(json.data) && json.data.length > 0) {
-            setLocalStore(STORAGE_KEYS.LIVE_CHANNELS, json.data);
-            return json.data;
+          if (json.data && Array.isArray(json.data)) {
+            const filtered = filterDeleted(json.data);
+            setLocalStore(STORAGE_KEYS.LIVE_CHANNELS, filtered);
+            return filtered;
           }
         }
       } catch (e) {
@@ -331,15 +459,16 @@ export class FirestoreService {
         }
         if (snap && !snap.empty) {
           const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as LiveChannel));
-          setLocalStore(STORAGE_KEYS.LIVE_CHANNELS, list);
-          return list;
+          const filtered = filterDeleted(list);
+          setLocalStore(STORAGE_KEYS.LIVE_CHANNELS, filtered);
+          return filtered;
         }
       } catch (e) {
         console.warn('Firestore getLiveChannels fallback notice:', e);
       }
     }
 
-    return localChannels && localChannels.length > 0 ? localChannels : initialLiveChannels;
+    return filterDeleted(localChannels && localChannels.length > 0 ? localChannels : initialLiveChannels);
   }
 
   async saveLiveChannel(channel: LiveChannel): Promise<LiveChannel> {
@@ -365,9 +494,9 @@ export class FirestoreService {
 
     // Also write to client Firestore if available
     if (this.useLive && db) {
-      timeoutPromise(setDoc(doc(db, 'live_channels', channel.id), channel), 3000)
+      timeoutPromise(setDoc(doc(db, 'live_channels', channel.id), cleanForFirestore(channel)), 3000)
         .catch(() => {});
-      timeoutPromise(setDoc(doc(db, 'liveChannels', channel.id), channel), 3000)
+      timeoutPromise(setDoc(doc(db, 'liveChannels', channel.id), cleanForFirestore(channel)), 3000)
         .catch(() => {});
     }
 
@@ -375,6 +504,8 @@ export class FirestoreService {
   }
 
   async deleteLiveChannel(id: string): Promise<void> {
+    addLocalDeletedId(id);
+
     const all = getLocalStore<LiveChannel[]>(STORAGE_KEYS.LIVE_CHANNELS, initialLiveChannels);
     setLocalStore(STORAGE_KEYS.LIVE_CHANNELS, all.filter(c => c.id !== id));
 
@@ -382,6 +513,10 @@ export class FirestoreService {
       fetch(`/api/live?id=${encodeURIComponent(id)}`, {
         method: 'DELETE',
       }).catch(e => console.warn('Server live channel delete notice:', e));
+
+      try {
+        window.dispatchEvent(new CustomEvent('ott_live_updated', { detail: { id, deleted: true } }));
+      } catch {}
     }
 
     if (this.useLive && db) {
@@ -392,19 +527,37 @@ export class FirestoreService {
 
   /* ------------------- ADVERTISEMENTS CMS (Section 15 & 6) ------------------- */
   async getAds(): Promise<Advertisement[]> {
+    const deletedIds = getLocalDeletedIds();
+    const filterDeleted = (list: Advertisement[]) => list.filter(a => !deletedIds.includes(a.id));
+
+    if (typeof window !== 'undefined') {
+      try {
+        const res = await timeoutPromise(fetch('/api/ads'), 1500);
+        if (res.ok) {
+          const json = await res.json();
+          if (json.data && Array.isArray(json.data)) {
+            const filtered = filterDeleted(json.data);
+            setLocalStore(STORAGE_KEYS.ADS, filtered);
+            return filtered;
+          }
+        }
+      } catch {}
+    }
+
     if (this.useLive && db) {
       try {
         const snap = await timeoutPromise(getDocs(collection(db, 'ads')), 2000);
         if (!snap.empty) {
           const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as Advertisement));
-          setLocalStore(STORAGE_KEYS.ADS, list);
-          return list;
+          const filtered = filterDeleted(list);
+          setLocalStore(STORAGE_KEYS.ADS, filtered);
+          return filtered;
         }
       } catch (e) {
         console.warn('Firestore getAds fallback:', e);
       }
     }
-    return getLocalStore<Advertisement[]>(STORAGE_KEYS.ADS, initialAds);
+    return filterDeleted(getLocalStore<Advertisement[]>(STORAGE_KEYS.ADS, initialAds));
   }
 
   async saveAd(ad: Advertisement): Promise<Advertisement> {
@@ -419,6 +572,14 @@ export class FirestoreService {
     }
     setLocalStore(STORAGE_KEYS.ADS, updated);
 
+    if (typeof window !== 'undefined') {
+      fetch('/api/ads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(ad),
+      }).catch(() => {});
+    }
+
     if (this.useLive && db) {
       timeoutPromise(setDoc(doc(db, 'ads', ad.id), ad), 3000)
         .catch(e => console.warn('Background Firestore saveAd notice:', e));
@@ -428,8 +589,20 @@ export class FirestoreService {
   }
 
   async deleteAd(id: string): Promise<void> {
+    addLocalDeletedId(id);
+
     const all = getLocalStore<Advertisement[]>(STORAGE_KEYS.ADS, initialAds);
     setLocalStore(STORAGE_KEYS.ADS, all.filter(a => a.id !== id));
+
+    if (typeof window !== 'undefined') {
+      fetch(`/api/ads?id=${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      }).catch(() => {});
+
+      try {
+        window.dispatchEvent(new CustomEvent('ott_ads_updated', { detail: { id, deleted: true } }));
+      } catch {}
+    }
 
     if (this.useLive && db) {
       timeoutPromise(deleteDoc(doc(db, 'ads', id)), 3000)
@@ -439,6 +612,9 @@ export class FirestoreService {
 
   /* ------------------- SEASONS & EPISODES ------------------- */
   async getSeasons(contentId: string): Promise<Season[]> {
+    const deletedIds = getLocalDeletedIds();
+    const filterDeleted = (list: Season[]) => list.filter(s => !deletedIds.includes(s.id));
+
     if (typeof window !== 'undefined') {
       try {
         const res = await timeoutPromise(fetch(`/api/content/seasons?seriesId=${encodeURIComponent(contentId)}`), 2000);
@@ -447,8 +623,9 @@ export class FirestoreService {
           if (json.data && Array.isArray(json.data) && json.data.length > 0) {
             const all = getLocalStore<Season[]>(STORAGE_KEYS.SEASONS, initialSeasons);
             const others = all.filter(s => s.contentId !== contentId && (s as any).seriesId !== contentId);
-            setLocalStore(STORAGE_KEYS.SEASONS, [...others, ...json.data]);
-            return json.data.sort((a: Season, b: Season) => a.seasonNumber - b.seasonNumber);
+            const filtered = filterDeleted(json.data);
+            setLocalStore(STORAGE_KEYS.SEASONS, [...others, ...filtered]);
+            return filtered.sort((a: Season, b: Season) => a.seasonNumber - b.seasonNumber);
           }
         }
       } catch (e) {
@@ -462,17 +639,22 @@ export class FirestoreService {
         const snap = await timeoutPromise(getDocs(seasonsRef), 2000);
         if (!snap.empty) {
           const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as Season));
-          return list.sort((a, b) => a.seasonNumber - b.seasonNumber);
+          return filterDeleted(list).sort((a, b) => a.seasonNumber - b.seasonNumber);
         }
       } catch (e) {
         console.warn('Firestore getSeasons fallback:', e);
       }
     }
     const all = getLocalStore<Season[]>(STORAGE_KEYS.SEASONS, initialSeasons);
-    return all.filter(s => s.contentId === contentId || (s as any).seriesId === contentId).sort((a, b) => a.seasonNumber - b.seasonNumber);
+    return filterDeleted(all.filter(s => s.contentId === contentId || (s as any).seriesId === contentId)).sort((a, b) => a.seasonNumber - b.seasonNumber);
   }
 
   async saveSeason(season: Season): Promise<Season> {
+    const deletedIds = getLocalDeletedIds();
+    if (deletedIds.includes(season.id)) {
+      setLocalStore(STORAGE_KEYS.DELETED_CONTENT, deletedIds.filter(id => id !== season.id));
+    }
+
     const seriesId = season.seriesId || (season as any).contentId;
     const seasonToSave: Season = {
       ...season,
@@ -502,7 +684,7 @@ export class FirestoreService {
     }
 
     if (this.useLive && db && seriesId) {
-      timeoutPromise(setDoc(doc(db, 'content', seriesId, 'seasons', seasonToSave.id), seasonToSave), 3000)
+      timeoutPromise(setDoc(doc(db, 'content', seriesId, 'seasons', seasonToSave.id), cleanForFirestore(seasonToSave)), 3000)
         .catch(e => console.warn('Background Firestore saveSeason notice:', e));
     }
 
@@ -510,6 +692,8 @@ export class FirestoreService {
   }
 
   async deleteSeason(contentId: string, seasonId: string): Promise<void> {
+    addLocalDeletedId(seasonId);
+
     const all = getLocalStore<Season[]>(STORAGE_KEYS.SEASONS, initialSeasons);
     setLocalStore(STORAGE_KEYS.SEASONS, all.filter(s => s.id !== seasonId));
 
@@ -526,6 +710,9 @@ export class FirestoreService {
   }
 
   async getEpisodes(contentId: string, seasonId: string): Promise<Episode[]> {
+    const deletedIds = getLocalDeletedIds();
+    const filterDeleted = (list: Episode[]) => list.filter(e => !deletedIds.includes(e.id));
+
     if (typeof window !== 'undefined') {
       try {
         const res = await timeoutPromise(
@@ -537,8 +724,9 @@ export class FirestoreService {
           if (json.data && Array.isArray(json.data) && json.data.length > 0) {
             const all = getLocalStore<Episode[]>(STORAGE_KEYS.EPISODES, initialEpisodes);
             const others = all.filter(e => e.seasonId !== seasonId);
-            setLocalStore(STORAGE_KEYS.EPISODES, [...others, ...json.data]);
-            return json.data.sort((a: Episode, b: Episode) => a.episodeNumber - b.episodeNumber);
+            const filteredEpisodes = filterDeleted(json.data);
+            setLocalStore(STORAGE_KEYS.EPISODES, [...others, ...filteredEpisodes]);
+            return filteredEpisodes.sort((a: Episode, b: Episode) => a.episodeNumber - b.episodeNumber);
           }
         }
       } catch (e) {
@@ -552,14 +740,14 @@ export class FirestoreService {
         const snap = await timeoutPromise(getDocs(epRef), 2000);
         if (!snap.empty) {
           const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as Episode));
-          return list.sort((a, b) => a.episodeNumber - b.episodeNumber);
+          return filterDeleted(list).sort((a, b) => a.episodeNumber - b.episodeNumber);
         }
       } catch (e) {
         console.warn('Firestore getEpisodes fallback:', e);
       }
     }
     const all = getLocalStore<Episode[]>(STORAGE_KEYS.EPISODES, initialEpisodes);
-    return all.filter(e => e.seasonId === seasonId).sort((a, b) => a.episodeNumber - b.episodeNumber);
+    return filterDeleted(all.filter(e => e.seasonId === seasonId)).sort((a, b) => a.episodeNumber - b.episodeNumber);
   }
 
   async saveEpisode(episode: Episode): Promise<Episode> {
@@ -592,7 +780,7 @@ export class FirestoreService {
     }
 
     if (this.useLive && db && seriesId && epToSave.seasonId) {
-      timeoutPromise(setDoc(doc(db, 'content', seriesId, 'seasons', epToSave.seasonId, 'episodes', epToSave.id), epToSave), 3000)
+      timeoutPromise(setDoc(doc(db, 'content', seriesId, 'seasons', epToSave.seasonId, 'episodes', epToSave.id), cleanForFirestore(epToSave)), 3000)
         .catch(e => console.warn('Background Firestore saveEpisode notice:', e));
     }
 
@@ -600,25 +788,64 @@ export class FirestoreService {
   }
 
   async deleteEpisode(contentId: string, seasonId: string, episodeId: string): Promise<void> {
+    addLocalDeletedId(episodeId);
+
     const all = getLocalStore<Episode[]>(STORAGE_KEYS.EPISODES, initialEpisodes);
+    const targetEp = all.find(e => e.id === episodeId);
+    const videoId = targetEp?.videoId || '';
+
     setLocalStore(STORAGE_KEYS.EPISODES, all.filter(e => e.id !== episodeId));
 
     if (typeof window !== 'undefined') {
-      fetch(`/api/content/episodes?seriesId=${encodeURIComponent(contentId)}&seasonId=${encodeURIComponent(seasonId)}&id=${encodeURIComponent(episodeId)}`, {
+      const qParams = new URLSearchParams({
+        seriesId: contentId,
+        seasonId,
+        id: episodeId,
+      });
+      if (videoId) qParams.set('videoId', videoId);
+
+      fetch(`/api/content/episodes?${qParams.toString()}`, {
         method: 'DELETE',
       }).catch(e => console.warn('Server deleteEpisode notice:', e));
+
+      if (videoId && !videoId.startsWith('http')) {
+        fetch(`/api/bunny/videos?guid=${encodeURIComponent(videoId)}`, {
+          method: 'DELETE',
+        }).catch(() => {});
+      }
     }
 
     if (this.useLive && db) {
       timeoutPromise(deleteDoc(doc(db, 'content', contentId, 'seasons', seasonId, 'episodes', episodeId)), 3000)
         .catch(e => console.warn('Background Firestore deleteEpisode notice:', e));
+
+      try {
+        const delRef = doc(db, 'users', 'app_deleted_content');
+        getDoc(delRef).then(snap => {
+          let list: string[] = [];
+          if (snap.exists()) {
+            list = snap.data()?.deletedIds || [];
+          }
+          if (!list.includes(episodeId)) {
+            list.push(episodeId);
+          }
+          setDoc(delRef, {
+            deletedIds: list,
+            lastDeletedId: episodeId,
+            updatedAt: new Date().toISOString(),
+          }, { merge: true }).catch(() => {});
+        }).catch(() => {});
+      } catch {}
     }
   }
 
   /* ------------------- SUBSCRIPTION PLANS ------------------- */
   async getPlans(): Promise<Plan[]> {
+    const deletedIds = getLocalDeletedIds();
+    const filterDeleted = (list: Plan[]) => list.filter(p => !deletedIds.includes(p.id));
+
     // 1. Fast local cache check
-    const localPlans = getLocalStore<Plan[]>(STORAGE_KEYS.PLANS, initialPlans);
+    const localPlans = filterDeleted(getLocalStore<Plan[]>(STORAGE_KEYS.PLANS, initialPlans));
 
     // 2. Browser API sync (fast, reliable server route with admin Firestore sync)
     if (typeof window !== 'undefined') {
@@ -627,8 +854,9 @@ export class FirestoreService {
         if (res.ok) {
           const json = await res.json();
           if (json.data && Array.isArray(json.data) && json.data.length > 0) {
-            setLocalStore(STORAGE_KEYS.PLANS, json.data);
-            return json.data;
+            const clean = filterDeleted(json.data);
+            setLocalStore(STORAGE_KEYS.PLANS, clean);
+            return clean;
           }
         }
       } catch (e) {
@@ -641,7 +869,7 @@ export class FirestoreService {
       try {
         const snap = await timeoutPromise(getDocs(collection(db, 'plans')), 2000);
         if (!snap.empty) {
-          const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as Plan));
+          const list = filterDeleted(snap.docs.map(d => ({ id: d.id, ...d.data() } as Plan)));
           setLocalStore(STORAGE_KEYS.PLANS, list);
           return list;
         }
@@ -649,10 +877,15 @@ export class FirestoreService {
         console.warn('Firestore getPlans fallback:', e);
       }
     }
-    return localPlans && localPlans.length > 0 ? localPlans : initialPlans;
+    return localPlans && localPlans.length > 0 ? localPlans : filterDeleted(initialPlans);
   }
 
   async savePlan(plan: Plan): Promise<Plan> {
+    const deletedIds = getLocalDeletedIds();
+    if (deletedIds.includes(plan.id)) {
+      setLocalStore(STORAGE_KEYS.DELETED_CONTENT, deletedIds.filter(id => id !== plan.id));
+    }
+
     const all = getLocalStore<Plan[]>(STORAGE_KEYS.PLANS, initialPlans);
     const index = all.findIndex(p => p.id === plan.id);
     let updated: Plan[];
@@ -674,7 +907,7 @@ export class FirestoreService {
     }
 
     if (this.useLive && db) {
-      timeoutPromise(setDoc(doc(db, 'plans', plan.id), plan), 3000)
+      timeoutPromise(setDoc(doc(db, 'plans', plan.id), cleanForFirestore(plan)), 3000)
         .catch(e => console.warn('Background Firestore savePlan notice:', e));
     }
 
@@ -682,6 +915,8 @@ export class FirestoreService {
   }
 
   async deletePlan(id: string): Promise<void> {
+    addLocalDeletedId(id);
+
     const all = getLocalStore<Plan[]>(STORAGE_KEYS.PLANS, initialPlans);
     setLocalStore(STORAGE_KEYS.PLANS, all.filter(p => p.id !== id));
 
@@ -713,32 +948,31 @@ export class FirestoreService {
 
       // Determine session liveness & logout state
       const lastLoginTime = u?.lastLogin || (Array.isArray(u?.devices) && u.devices.length > 0 ? u.devices[0].lastLogin : null) || u?.loginTime || u?.createdAt || null;
-      const loginTimestamp = lastLoginTime ? new Date(lastLoginTime).getTime() : 0;
-      const now = Date.now();
-      const hoursSinceLogin = loginTimestamp > 0 ? (now - loginTimestamp) / (1000 * 60 * 60) : 999;
+      const lastLogoutTime = u?.lastLogout || null;
 
-      const isExplicitlyLoggedOut = u?.sessionStatus === 'logged_out' || u?.isLoggedIn === false;
-      const isSessionExpired = hoursSinceLogin > 12;
-      const isCurrentlyActive = !isExplicitlyLoggedOut && !isSessionExpired && (loginTimestamp > 0);
+      const loginMs = lastLoginTime ? new Date(lastLoginTime).getTime() : 0;
+      const logoutMs = lastLogoutTime ? new Date(lastLogoutTime).getTime() : 0;
+      const isLoggedOutByTimestamp = logoutMs > 0 && loginMs > 0 && logoutMs >= loginMs;
+
+      const isExplicitlyLoggedOut = u?.sessionStatus === 'logged_out' || u?.isLoggedIn === false || isLoggedOutByTimestamp;
+      const isCurrentlyActive = (u?.sessionStatus === 'active' || u?.isLoggedIn === true) && !isExplicitlyLoggedOut;
 
       const sessionStatus: 'active' | 'logged_out' = isCurrentlyActive ? 'active' : 'logged_out';
       const isLoggedIn = isCurrentlyActive;
 
       let devices: any[] = [];
-      if (isCurrentlyActive) {
-        if (Array.isArray(u?.devices) && u.devices.length > 0) {
-          devices = u.devices;
-        } else {
-          devices = [
-            {
-              deviceId: `android_${tenDigit || u?.id || 'dev'}`,
-              platform: 'android',
-              deviceName: 'Android Mobile App',
-              lastLogin: lastLoginTime || new Date().toISOString(),
-              isLoggedIn: true,
-            }
-          ];
-        }
+      if (isCurrentlyActive && Array.isArray(u?.devices) && u.devices.length > 0) {
+        devices = u.devices;
+      } else if (isCurrentlyActive) {
+        devices = [
+          {
+            deviceId: `android_${tenDigit || u?.id}`,
+            platform: 'android',
+            deviceName: 'Android Mobile App',
+            lastLogin: lastLoginTime || new Date().toISOString(),
+            isLoggedIn: true,
+          }
+        ];
       }
 
       let lastLogout = u?.lastLogout || null;
@@ -753,8 +987,8 @@ export class FirestoreService {
         id: u?.id || (tenDigit ? `user_${tenDigit}` : `user_${Date.now()}`),
         phone: formattedPhone,
         name: name,
-        subscriptionStatus: u?.subscriptionStatus || u?.status || 'active',
-        planName: u?.planName || (u?.subscriptionStatus === 'active' ? 'VIP Annual Pass' : 'Standard Access'),
+        subscriptionStatus: u?.subscriptionStatus || u?.status || 'free',
+        planName: u?.planName || (u?.subscriptionStatus === 'active' ? 'VIP Annual Pass' : 'Free User'),
         devices: devices,
         watchlist: Array.isArray(u?.watchlist) ? u.watchlist : [],
         continueWatching: u?.continueWatching && typeof u.continueWatching === 'object' ? u.continueWatching : {},
@@ -766,11 +1000,16 @@ export class FirestoreService {
       };
     };
 
-    const isDummyUser = (u: any) =>
-      u?.id === 'usr-003' ||
-      String(u?.phone || '').includes('7700 900123') ||
-      u?.name === 'Liam Gallagher' ||
-      String(u?.email || '').includes('ukmail.co.uk');
+    const isDummyUser = (u: any) => {
+      const idStr = String(u?.id || '');
+      if (idStr.startsWith('app_') || idStr.startsWith('perm_') || idStr.startsWith('user_admin')) return true;
+      return (
+        u?.id === 'usr-003' ||
+        String(u?.phone || '').includes('7700 900123') ||
+        u?.name === 'Liam Gallagher' ||
+        String(u?.email || '').includes('ukmail.co.uk')
+      );
+    };
 
     const deduplicateUsers = (userList: User[]): User[] => {
       const map = new Map<string, User>();
@@ -782,23 +1021,66 @@ export class FirestoreService {
           map.set(key, u);
         } else {
           const pickName = (u.name && !u.name.startsWith('User ')) ? u.name : existing.name;
-          const isLoggedOut = u.sessionStatus === 'logged_out' || existing.sessionStatus === 'logged_out' || !u.isLoggedIn;
+          const normTime = new Date(u.lastLogin || u.createdAt || 0).getTime();
+          const existTime = new Date(existing.lastLogin || existing.createdAt || 0).getTime();
+          const primary = normTime >= existTime ? u : existing;
+          const secondary = normTime >= existTime ? existing : u;
+          const isLoggedOut = primary.sessionStatus === 'logged_out' || !primary.isLoggedIn;
+
           const merged: User = {
-            ...existing,
-            ...u,
+            ...secondary,
+            ...primary,
             id: `user_${key}`,
             phone: `+91 ${key}`,
             name: pickName,
             sessionStatus: isLoggedOut ? 'logged_out' : 'active',
             isLoggedIn: !isLoggedOut,
-            devices: isLoggedOut ? [] : ((u.devices && u.devices.length > 0) ? u.devices : existing.devices),
-            lastLogin: u.lastLogin || existing.lastLogin,
-            lastLogout: isLoggedOut ? (u.lastLogout || existing.lastLogout || u.lastLogin) : undefined,
+            devices: isLoggedOut ? [] : ((primary.devices && primary.devices.length > 0) ? primary.devices : secondary.devices),
+            lastLogin: primary.lastLogin || secondary.lastLogin,
+            lastLogout: isLoggedOut ? (primary.lastLogout || secondary.lastLogout || primary.lastLogin) : undefined,
           };
           map.set(key, merged);
         }
       }
-      return Array.from(map.values());
+
+      const raw = Array.from(map.values());
+      // SINGLE ACTIVE USER POLICY: Whichever user is active and logged in most recently, ONLY that user is active
+      const activeCandidates = raw.filter(u => u.isLoggedIn && u.sessionStatus === 'active');
+      const singleActive = activeCandidates.length > 0
+        ? activeCandidates.sort((a, b) => new Date(b.lastLogin || b.createdAt || 0).getTime() - new Date(a.lastLogin || a.createdAt || 0).getTime())[0]
+        : null;
+
+      return raw.map(u => {
+        const uDigits = u.phone.replace(/\D/g, '').slice(-10);
+        const activeDigits = singleActive ? singleActive.phone.replace(/\D/g, '').slice(-10) : '';
+        const isTargetActive = singleActive && (u.id === singleActive.id || (uDigits && uDigits === activeDigits));
+
+        if (isTargetActive) {
+          return {
+            ...u,
+            isLoggedIn: true,
+            sessionStatus: 'active' as const,
+            devices: (u.devices && u.devices.length > 0) ? u.devices : [
+              {
+                deviceId: `android_${uDigits || u.id}`,
+                platform: 'android',
+                deviceName: 'Android Mobile App',
+                lastLogin: u.lastLogin || new Date().toISOString(),
+                isLoggedIn: true,
+              }
+            ],
+            lastLogout: undefined,
+          };
+        } else {
+          return {
+            ...u,
+            isLoggedIn: false,
+            sessionStatus: 'logged_out' as const,
+            devices: [],
+            lastLogout: u.lastLogout || u.lastLogin || u.createdAt,
+          };
+        }
+      });
     };
 
     // 1. Try server API route which reads directly with Admin authority
@@ -891,8 +1173,8 @@ export class FirestoreService {
     // Update local store
     const all = getLocalStore<User[]>(STORAGE_KEYS.USERS, []);
     const updated = all.map(u => {
-      const uDigits = u.phone.replace(/\D/g, '');
-      if (uDigits.endsWith(cleanPhone) || u.id === userId) {
+      const uDigits = u.phone.replace(/\D/g, '').slice(-10);
+      if ((cleanPhone && uDigits === cleanPhone) || u.id === userId) {
         return {
           ...u,
           isLoggedIn: false,
@@ -902,6 +1184,101 @@ export class FirestoreService {
         };
       }
       return u;
+    });
+    setLocalStore(STORAGE_KEYS.USERS, updated);
+  }
+
+  async activateUser(phoneOrId: string): Promise<void> {
+    const digits = phoneOrId.replace(/\D/g, '');
+    const cleanPhone = digits.length >= 10 ? digits.slice(-10) : phoneOrId;
+    const userId = `user_${cleanPhone}`;
+    const nowIso = new Date().toISOString();
+
+    if (typeof window !== 'undefined') {
+      try {
+        await fetch('/api/users', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: userId,
+            phone: cleanPhone,
+            action: 'activate',
+            sessionStatus: 'active',
+            isLoggedIn: true,
+          }),
+        });
+      } catch (e) {
+        console.warn('activateUser API notice:', e);
+      }
+    }
+
+    if (this.useLive && db) {
+      try {
+        // Activate target user in client Firestore
+        await setDoc(doc(db, 'users', userId), {
+          isLoggedIn: true,
+          sessionStatus: 'active',
+          lastLogin: nowIso,
+          devices: [
+            {
+              deviceId: `android_${cleanPhone}`,
+              deviceName: 'Android Mobile App',
+              platform: 'android',
+              lastLogin: nowIso,
+              isLoggedIn: true,
+            }
+          ],
+        }, { merge: true });
+
+        // Deactivate other users in Firestore
+        const snap = await getDocs(collection(db, 'users'));
+        for (const d of snap.docs) {
+          if (d.id !== userId && !d.id.startsWith('app_') && !d.id.startsWith('perm_') && !d.id.startsWith('user_admin')) {
+            const data = d.data();
+            if (data.isLoggedIn === true || data.sessionStatus === 'active') {
+              setDoc(d.ref, {
+                isLoggedIn: false,
+                sessionStatus: 'logged_out',
+                devices: [],
+                lastLogout: nowIso,
+              }, { merge: true }).catch(() => {});
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('activateUser Firestore notice:', e);
+      }
+    }
+
+    // Update local store: only cleanPhone is active, all others are logged out
+    const all = getLocalStore<User[]>(STORAGE_KEYS.USERS, []);
+    const updated = all.map(u => {
+      const uDigits = u.phone.replace(/\D/g, '').slice(-10);
+      if ((cleanPhone && uDigits === cleanPhone) || u.id === userId) {
+        return {
+          ...u,
+          isLoggedIn: true,
+          sessionStatus: 'active' as const,
+          devices: [
+            {
+              deviceId: `android_${cleanPhone}`,
+              platform: 'android',
+              deviceName: 'Android Mobile App',
+              lastLogin: nowIso,
+              isLoggedIn: true,
+            }
+          ],
+          lastLogin: nowIso,
+          lastLogout: undefined,
+        };
+      }
+      return {
+        ...u,
+        isLoggedIn: false,
+        sessionStatus: 'logged_out' as const,
+        devices: [],
+        lastLogout: u.lastLogout || nowIso,
+      };
     });
     setLocalStore(STORAGE_KEYS.USERS, updated);
   }
@@ -937,14 +1314,14 @@ export class FirestoreService {
   async getSubscriptions(): Promise<Subscription[]> {
     if (this.useLive && db) {
       try {
-        const snap = await timeoutPromise(getDocs(collection(db, 'subscriptions')), 2000);
+        const snap = await timeoutPromise(getDocs(collection(db, 'subscriptions')), 6000);
         if (!snap.empty) {
           const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as Subscription));
           setLocalStore(STORAGE_KEYS.SUBSCRIPTIONS, list);
           return list;
         }
       } catch (e) {
-        console.warn('Firestore getSubscriptions fallback:', e);
+        // Silently use local store fallback without noisy error
       }
     }
     return getLocalStore<Subscription[]>(STORAGE_KEYS.SUBSCRIPTIONS, initialSubscriptions);
@@ -952,22 +1329,47 @@ export class FirestoreService {
 
   /* ------------------- HERO BANNERS ------------------- */
   async getBanners(): Promise<Banner[]> {
+    const deletedIds = getLocalDeletedIds();
+    const filterDeleted = (list: Banner[]) => list.filter(b => !deletedIds.includes(b.id));
+
+    if (typeof window !== 'undefined') {
+      try {
+        const res = await timeoutPromise(fetch('/api/banners'), 1500);
+        if (res.ok) {
+          const json = await res.json();
+          if (json.data && Array.isArray(json.data) && json.data.length > 0) {
+            const clean = filterDeleted(json.data);
+            setLocalStore(STORAGE_KEYS.BANNERS, clean);
+            return clean.sort((a, b) => a.order - b.order);
+          }
+        }
+      } catch (e) {
+        // fallback
+      }
+    }
+
     if (this.useLive && db) {
       try {
         const snap = await timeoutPromise(getDocs(collection(db, 'banners')), 2000);
         if (!snap.empty) {
-          const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as Banner));
+          const list = filterDeleted(snap.docs.map(d => ({ id: d.id, ...d.data() } as Banner)));
+          setLocalStore(STORAGE_KEYS.BANNERS, list);
           return list.sort((a, b) => a.order - b.order);
         }
       } catch (e) {
         console.warn('Firestore getBanners fallback:', e);
       }
     }
-    const all = getLocalStore<Banner[]>(STORAGE_KEYS.BANNERS, initialBanners);
+    const all = filterDeleted(getLocalStore<Banner[]>(STORAGE_KEYS.BANNERS, initialBanners));
     return all.sort((a, b) => a.order - b.order);
   }
 
   async saveBanner(banner: Banner): Promise<Banner> {
+    const deletedIds = getLocalDeletedIds();
+    if (deletedIds.includes(banner.id)) {
+      setLocalStore(STORAGE_KEYS.DELETED_CONTENT, deletedIds.filter(id => id !== banner.id));
+    }
+
     const all = getLocalStore<Banner[]>(STORAGE_KEYS.BANNERS, initialBanners);
     const index = all.findIndex(b => b.id === banner.id);
     let updated: Banner[];
@@ -979,8 +1381,16 @@ export class FirestoreService {
     }
     setLocalStore(STORAGE_KEYS.BANNERS, updated);
 
+    if (typeof window !== 'undefined') {
+      fetch('/api/banners', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(banner),
+      }).catch(e => console.warn('API saveBanner notice:', e));
+    }
+
     if (this.useLive && db) {
-      timeoutPromise(setDoc(doc(db, 'banners', banner.id), banner), 3000)
+      timeoutPromise(setDoc(doc(db, 'banners', banner.id), cleanForFirestore(banner)), 3000)
         .catch(e => console.warn('Background Firestore saveBanner notice:', e));
     }
 
@@ -988,8 +1398,14 @@ export class FirestoreService {
   }
 
   async deleteBanner(id: string): Promise<void> {
+    addLocalDeletedId(id);
+
     const all = getLocalStore<Banner[]>(STORAGE_KEYS.BANNERS, initialBanners);
     setLocalStore(STORAGE_KEYS.BANNERS, all.filter(b => b.id !== id));
+
+    if (typeof window !== 'undefined') {
+      fetch(`/api/banners?id=${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => {});
+    }
 
     if (this.useLive && db) {
       timeoutPromise(deleteDoc(doc(db, 'banners', id)), 3000)
@@ -1039,7 +1455,7 @@ export class FirestoreService {
     setLocalStore(STORAGE_KEYS.ADMINS, updated);
 
     if (this.useLive && db) {
-      timeoutPromise(setDoc(doc(db, 'admins', adminUser.uid), adminUser), 3000)
+      timeoutPromise(setDoc(doc(db, 'admins', adminUser.uid), cleanForFirestore(adminUser)), 3000)
         .catch(e => console.warn('Background Firestore saveAdmin notice:', e));
     }
 
@@ -1113,7 +1529,7 @@ export class FirestoreService {
     }
 
     if (this.useLive && db) {
-      timeoutPromise(setDoc(doc(db, 'settings', 'companyInfo'), updated, { merge: true }), 3000)
+      timeoutPromise(setDoc(doc(db, 'settings', 'companyInfo'), cleanForFirestore(updated), { merge: true }), 3000)
         .catch(e => console.warn('Background Firestore updateCompanyInfo notice:', e));
     }
     return updated;
@@ -1122,11 +1538,28 @@ export class FirestoreService {
 
   /* ------------------- GRIEVANCES ("जनतेचा आवाज" - Section 29) ------------------- */
   async getGrievances(): Promise<Grievance[]> {
+    if (typeof window !== 'undefined') {
+      try {
+        const res = await timeoutPromise(fetch('/api/grievances', { cache: 'no-store' }), 3000);
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+            setLocalStore(STORAGE_KEYS.GRIEVANCES, json.data);
+            return json.data;
+          }
+        }
+      } catch (e) {
+        console.warn('API getGrievances fallback:', e);
+      }
+    }
+
     if (this.useLive && db) {
       try {
         const snap = await timeoutPromise(getDocs(collection(db, 'grievances')), 3000);
         if (!snap.empty) {
-          return snap.docs.map(d => ({ id: d.id, ...d.data() } as Grievance));
+          const remote = snap.docs.map(d => ({ id: d.id, ...d.data() } as Grievance));
+          setLocalStore(STORAGE_KEYS.GRIEVANCES, remote);
+          return remote;
         }
       } catch (e) {
         console.warn('Firestore getGrievances fallback:', e);
@@ -1143,6 +1576,15 @@ export class FirestoreService {
       if (adminNotes) list[idx].adminNotes = adminNotes;
       setLocalStore(STORAGE_KEYS.GRIEVANCES, list);
     }
+
+    if (typeof window !== 'undefined') {
+      fetch('/api/grievances', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, status, adminNotes }),
+      }).catch(e => console.warn('API updateGrievanceStatus notice:', e));
+    }
+
     if (this.useLive && db) {
       timeoutPromise(updateDoc(doc(db, 'grievances', id), { status, ...(adminNotes ? { adminNotes } : {}) }), 3000)
         .catch(e => console.warn('Background Firestore updateGrievanceStatus notice:', e));
@@ -1150,8 +1592,14 @@ export class FirestoreService {
   }
 
   async deleteGrievance(id: string): Promise<void> {
+    addLocalDeletedId(id);
     const list = await this.getGrievances();
     setLocalStore(STORAGE_KEYS.GRIEVANCES, list.filter(g => g.id !== id));
+
+    if (typeof window !== 'undefined') {
+      fetch(`/api/grievances?id=${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => {});
+    }
+
     if (this.useLive && db) {
       timeoutPromise(deleteDoc(doc(db, 'grievances', id)), 3000)
         .catch(e => console.warn('Background Firestore deleteGrievance notice:', e));
@@ -1167,8 +1615,20 @@ export class FirestoreService {
       list.unshift(grievance);
     }
     setLocalStore(STORAGE_KEYS.GRIEVANCES, list);
+
+    if (typeof window !== 'undefined') {
+      fetch('/api/grievances', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(grievance),
+      }).then(() => {
+        window.dispatchEvent(new CustomEvent('ott_grievance_created', { detail: grievance }));
+        window.dispatchEvent(new CustomEvent('ott_notification_created'));
+      }).catch(e => console.warn('API saveGrievance notice:', e));
+    }
+
     if (this.useLive && db) {
-      timeoutPromise(setDoc(doc(db, 'grievances', grievance.id), grievance), 3000)
+      timeoutPromise(setDoc(doc(db, 'grievances', grievance.id), cleanForFirestore(grievance)), 3000)
         .catch(e => console.warn('Background Firestore saveGrievance notice:', e));
     }
   }
@@ -1176,32 +1636,33 @@ export class FirestoreService {
 
   /* Notifications (Section 23) */
   async getNotifications(): Promise<NotificationItem[]> {
+    const deletedIds = getLocalDeletedIds();
+    const filterDeleted = (list: NotificationItem[]) => list.filter(n => !deletedIds.includes(n.id) && !n.id.startsWith('notif-demo'));
+
     if (typeof window !== 'undefined') {
       try {
-        const res = await timeoutPromise(fetch('/api/notifications', { cache: 'no-store' }), 3000);
+        const res = await timeoutPromise(fetch('/api/notifications', { cache: 'no-store' }), 7000);
         if (res.ok) {
           const data = await res.json();
           if (Array.isArray(data.data)) {
-            const list = data.data.filter((n: any) => !n.id.startsWith('notif-demo'));
+            const list = filterDeleted(data.data);
             setLocalStore(STORAGE_KEYS.NOTIFICATIONS, list);
             return list;
           }
         }
       } catch (e) {
-        console.warn('API getNotifications fallback:', e);
+        // Silently use local store without noisy error
       }
     }
 
     const rawLocal = getLocalStore<NotificationItem[]>(STORAGE_KEYS.NOTIFICATIONS, initialNotifications);
-    const local = (rawLocal || []).filter(n => !n.id.startsWith('notif-demo'));
+    const local = filterDeleted(rawLocal || []);
     if (!this.useLive || !db) return local;
 
     try {
       const snap = await timeoutPromise(getDocs(collection(db, 'notifications')), 2500);
       if (snap && !snap.empty) {
-        const remote = snap.docs
-          .map(d => ({ ...d.data(), id: d.id } as NotificationItem))
-          .filter(n => !n.id.startsWith('notif-demo'));
+        const remote = filterDeleted(snap.docs.map(d => ({ ...d.data(), id: d.id } as NotificationItem)));
         setLocalStore(STORAGE_KEYS.NOTIFICATIONS, remote);
         return remote;
       }
@@ -1235,6 +1696,7 @@ export class FirestoreService {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(cleanItem),
         });
+        window.dispatchEvent(new CustomEvent('ott_notification_created', { detail: cleanItem }));
       } catch (e) {
         console.warn('Server API sendNotification notice:', e);
       }
@@ -1242,7 +1704,7 @@ export class FirestoreService {
 
     if (this.useLive && db) {
       try {
-        timeoutPromise(setDoc(doc(db, 'notifications', cleanItem.id), cleanItem), 3000)
+        timeoutPromise(setDoc(doc(db, 'notifications', cleanItem.id), cleanForFirestore(cleanItem)), 3000)
           .catch(e => console.warn('Background Firestore sendNotification notice:', e));
       } catch (e) {
         console.warn('Direct Firestore sendNotification notice:', e);
@@ -1251,6 +1713,7 @@ export class FirestoreService {
   }
 
   async deleteNotification(id: string): Promise<void> {
+    addLocalDeletedId(id);
     const list = await this.getNotifications();
     setLocalStore(STORAGE_KEYS.NOTIFICATIONS, list.filter(n => n.id !== id));
 
@@ -1270,6 +1733,9 @@ export class FirestoreService {
 
   async clearAllNotifications(): Promise<void> {
     const list = await this.getNotifications();
+    for (const item of list) {
+      addLocalDeletedId(item.id);
+    }
     setLocalStore(STORAGE_KEYS.NOTIFICATIONS, []);
 
     if (typeof window !== 'undefined') {
@@ -1291,13 +1757,30 @@ export class FirestoreService {
 
   /* Dynamic Categories (Section 1 & 6) */
   async getCategories(): Promise<ContentCategory[]> {
-    const local = getLocalStore<ContentCategory[]>(STORAGE_KEYS.CATEGORIES, initialCategories);
+    const deletedIds = getLocalDeletedIds();
+    const filterDeleted = (list: ContentCategory[]) => list.filter(c => !deletedIds.includes(c.id));
+    const local = filterDeleted(getLocalStore<ContentCategory[]>(STORAGE_KEYS.CATEGORIES, initialCategories));
+
+    if (typeof window !== 'undefined') {
+      try {
+        const res = await fetch('/api/categories');
+        const json = await res.json();
+        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+          const clean = filterDeleted(json.data);
+          setLocalStore(STORAGE_KEYS.CATEGORIES, clean);
+          return clean;
+        }
+      } catch (e) {
+        // Fallback to Firestore / local
+      }
+    }
+
     if (!this.useLive || !db) return local;
 
     try {
       const snap = await timeoutPromise(getDocs(collection(db, 'categories')), 2500);
       if (snap && !snap.empty) {
-        const remote = snap.docs.map(d => ({ ...d.data(), id: d.id } as ContentCategory));
+        const remote = filterDeleted(snap.docs.map(d => ({ ...d.data(), id: d.id } as ContentCategory)));
         setLocalStore(STORAGE_KEYS.CATEGORIES, remote);
         return remote;
       }
@@ -1306,19 +1789,56 @@ export class FirestoreService {
   }
 
   async saveCategory(cat: ContentCategory): Promise<void> {
+    const deletedIds = getLocalDeletedIds();
+    if (deletedIds.includes(cat.id)) {
+      setLocalStore(STORAGE_KEYS.DELETED_CONTENT, deletedIds.filter(id => id !== cat.id));
+    }
+
     const list = await this.getCategories();
     const idx = list.findIndex(c => c.id === cat.id);
     const updated = idx >= 0 ? list.map(c => c.id === cat.id ? cat : c) : [...list, cat];
     setLocalStore(STORAGE_KEYS.CATEGORIES, updated);
+
+    if (typeof window !== 'undefined') {
+      try {
+        const res = await fetch('/api/categories', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(cat),
+        });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          console.warn('API /api/categories returned non-ok:', res.status, errData);
+        }
+      } catch (e) {
+        console.warn('Background API categories save notice:', e);
+      }
+    }
+
     if (this.useLive && db) {
-      timeoutPromise(setDoc(doc(db, 'categories', cat.id), cat), 3000)
-        .catch(e => console.warn('Background Firestore saveCategory notice:', e));
+      try {
+        await timeoutPromise(setDoc(doc(db, 'categories', cat.id), cleanForFirestore(cat)), 3000);
+      } catch (e) {
+        console.warn('Background Firestore saveCategory notice:', e);
+      }
     }
   }
 
   async deleteCategory(id: string): Promise<void> {
+    addLocalDeletedId(id);
     const list = await this.getCategories();
     setLocalStore(STORAGE_KEYS.CATEGORIES, list.filter(c => c.id !== id));
+
+    if (typeof window !== 'undefined') {
+      try {
+        await fetch(`/api/categories?id=${encodeURIComponent(id)}`, {
+          method: 'DELETE',
+        });
+      } catch (e) {
+        console.warn('Background API categories delete notice:', e);
+      }
+    }
+
     if (this.useLive && db) {
       timeoutPromise(deleteDoc(doc(db, 'categories', id)), 3000)
         .catch(e => console.warn('Background Firestore deleteCategory notice:', e));
@@ -1382,17 +1902,18 @@ export const firestoreService = new FirestoreService();
 if (typeof window !== 'undefined') {
   setTimeout(() => {
     try {
-      const content = getLocalStore<ContentItem[]>(STORAGE_KEYS.CONTENT, []);
-      const seasons = getLocalStore<Season[]>(STORAGE_KEYS.SEASONS, []);
-      const episodes = getLocalStore<Episode[]>(STORAGE_KEYS.EPISODES, []);
-      const liveChannels = getLocalStore<LiveChannel[]>(STORAGE_KEYS.LIVE_CHANNELS, []);
-      const banners = getLocalStore<Banner[]>(STORAGE_KEYS.BANNERS, []);
+      const deletedIds = getLocalDeletedIds();
+      const content = getLocalStore<ContentItem[]>(STORAGE_KEYS.CONTENT, []).filter(c => !deletedIds.includes(c.id));
+      const seasons = getLocalStore<Season[]>(STORAGE_KEYS.SEASONS, []).filter(s => !deletedIds.includes(s.id));
+      const episodes = getLocalStore<Episode[]>(STORAGE_KEYS.EPISODES, []).filter(e => !deletedIds.includes(e.id));
+      const liveChannels = getLocalStore<LiveChannel[]>(STORAGE_KEYS.LIVE_CHANNELS, []).filter(l => !deletedIds.includes(l.id));
+      const banners = getLocalStore<Banner[]>(STORAGE_KEYS.BANNERS, []).filter(b => !deletedIds.includes(b.id));
       
       if (content.length > 0 || seasons.length > 0 || episodes.length > 0 || liveChannels.length > 0) {
         fetch('/api/sync-all', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content, seasons, episodes, liveChannels, banners })
+          body: JSON.stringify({ content, seasons, episodes, liveChannels, banners, deletedIds })
         }).then(r => r.json()).then(res => {
           console.log('Automated Cloud Firestore sync complete:', res);
         }).catch(err => {

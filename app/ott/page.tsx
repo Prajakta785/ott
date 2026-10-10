@@ -37,7 +37,7 @@ import {
   ArrowLeft
 } from 'lucide-react';
 import { firestoreService } from '@/lib/firestore-service';
-import { ContentItem, LiveChannel, Plan, Banner, User, CompanyInfo } from '@/lib/types';
+import { ContentItem, LiveChannel, Plan, Banner, User, CompanyInfo, ContentCategory } from '@/lib/types';
 import { initialCompanyInfo } from '@/lib/mock-data';
 import { VideoPlayer } from '@/components/video-player';
 import { useLanguage } from '@/lib/i18n';
@@ -50,11 +50,12 @@ export default function OTTPlatformPage() {
   const [channels, setChannels] = useState<LiveChannel[]>([]);
   const [banners, setBanners] = useState<Banner[]>([]);
   const [plans, setPlans] = useState<Plan[]>([]);
+  const [categories, setCategories] = useState<ContentCategory[]>([]);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
   // Active Tab & Language Filter
-  const [activeTab, setActiveTab] = useState<'all' | 'live' | 'movies' | 'series' | 'plans'>('movies');
+  const [activeTab, setActiveTab] = useState<'all' | 'live' | 'movies' | 'series' | 'plans' | string>('movies');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedGenre, setSelectedGenre] = useState('all');
   const [selectedLanguage, setSelectedLanguage] = useState<'all' | 'mr' | 'hi' | 'en'>('all');
@@ -89,19 +90,21 @@ export default function OTTPlatformPage() {
   useEffect(() => {
     async function loadData() {
       try {
-        const [items, liveChannels, heroBanners, subPlans, users, compData] = await Promise.all([
+        const [items, liveChannels, heroBanners, subPlans, users, compData, cats] = await Promise.all([
           firestoreService.getContent(),
           firestoreService.getLiveChannels(),
           firestoreService.getBanners(),
           firestoreService.getPlans(),
           firestoreService.getUsers(),
           firestoreService.getCompanyInfo(),
+          firestoreService.getCategories(),
         ]);
 
         setContentList(items);
         setChannels(liveChannels);
         setBanners(heroBanners);
         setPlans(subPlans);
+        setCategories(cats || []);
         if (compData) {
           setCompanyInfo(compData);
         }
@@ -114,8 +117,8 @@ export default function OTTPlatformPage() {
             name: 'राहुल पाटील',
             phone: '+91 98221 44520',
             createdAt: new Date().toISOString(),
-            subscriptionStatus: 'active',
-            planName: 'सुवर्ण वार्षिक VIP (Annual 4K)',
+            subscriptionStatus: 'free',
+            planName: 'Free User',
             devices: [
               { deviceId: 'dev-1', deviceName: 'Samsung 4K Android TV', platform: 'android-tv', lastLogin: 'Just now' },
               { deviceId: 'dev-2', deviceName: 'OnePlus 12 (Mobile)', platform: 'android', lastLogin: 'Yesterday' }
@@ -402,9 +405,9 @@ export default function OTTPlatformPage() {
       id: 'live-ch-1',
       channelName: 'Gramin Bharat TV Live (ग्रामीण भारत)',
       channelCode: 'gramin_bharat_live',
-      streamUrl: 'c0a4e45c-b442-4071-b68f-6d8662b5f001',
-      logo: 'https://vz-1192802e-f33.b-cdn.net/c0a4e45c-b442-4071-b68f-6d8662b5f001/thumbnail.jpg',
-      poster: 'https://vz-1192802e-f33.b-cdn.net/c0a4e45c-b442-4071-b68f-6d8662b5f001/thumbnail.jpg',
+      streamUrl: 'e6eb731d-a1b1-4885-a40b-54c4e860c78e',
+      logo: '/app_logo.png',
+      poster: 'https://vz-92cc7e0f-cd7.b-cdn.net/e6eb731d-a1b1-4885-a40b-54c4e860c78e/thumbnail.jpg',
       description: '२४ तास चालू असलेले महाराष्ट्र ग्रामीण भागातील अग्रगण्य थेट बातमी चॅनेल.',
       isLive: true,
       status: 'active',
@@ -486,7 +489,7 @@ export default function OTTPlatformPage() {
     }
   ];
 
-  const userMovies = contentList.filter(c => c.type === 'movie');
+  const userMovies = contentList.filter(c => c.type !== 'series');
   const allMovies = [
     ...userMovies,
     ...defaultMovies.filter(dm => !userMovies.some(um => um.id === dm.id))
@@ -514,7 +517,12 @@ export default function OTTPlatformPage() {
           (gNorm.includes('मराठी') && (itemG.includes('marathi') || itemG.includes('मराठी'))) ||
           (gNorm.includes('हिंदी') && (itemG.includes('hindi') || itemG.includes('हिंदी'))) ||
           (gNorm.includes('english') && (itemG.includes('english') || itemG.includes('इंग्रजी')));
-      });
+      }) ||
+      (m.subCategory && String(m.subCategory).toLowerCase().includes(gNorm)) ||
+      (Array.isArray(m.subCategories) && m.subCategories.some(sub => String(sub).toLowerCase().includes(gNorm))) ||
+      (Array.isArray(m.tags) && m.tags.some(t => String(t).toLowerCase().includes(gNorm))) ||
+      (m.type && String(m.type).toLowerCase() === gNorm) ||
+      (m.title && String(m.title).toLowerCase().includes(gNorm));
       if (!hasGenre) return false;
     }
     if (selectedLanguage !== 'all') {
@@ -619,6 +627,21 @@ export default function OTTPlatformPage() {
   };
 
   const handlePlayContent = (item: ContentItem) => {
+    // Check Premium requirement
+    if (item.isPremium) {
+      const hasPremiumPlan = currentUser?.subscriptionStatus === 'active' &&
+                             currentUser?.planId !== 'free' &&
+                             currentUser?.planId !== 'none';
+      if (!hasPremiumPlan) {
+        alert(lang === 'mr' ? 'हा प्रीमियम चित्रपट आहे. कृपया पाहण्यासाठी सबस्क्रिप्शन घ्या.' : lang === 'hi' ? 'यह एक प्रीमियम फिल्म है। कृपया देखने के लिए सब्सक्रिप्शन लें।' : 'This is a premium movie. Please subscribe to watch.');
+        const plansSection = document.getElementById('plans-section');
+        if (plansSection) {
+          plansSection.scrollIntoView({ behavior: 'smooth' });
+        }
+        return; // Block playing
+      }
+    }
+
     setPlayingVideo({
       src: item.videoId || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
       title: getContentTitle(item),
@@ -734,19 +757,51 @@ export default function OTTPlatformPage() {
               </div>
             </Link>
 
-            <nav className="hidden md:flex items-center gap-6 text-xs font-bold text-slate-300">
+            <nav className="hidden md:flex items-center gap-5 text-xs font-bold text-slate-300">
               <button
-                onClick={() => setActiveTab('movies')}
-                className={`transition hover:text-white cursor-pointer ${activeTab === 'movies' ? 'text-rose-500 font-black' : ''}`}
+                onClick={() => { setActiveTab('all'); setSelectedGenre('all'); }}
+                className={`transition hover:text-white cursor-pointer ${activeTab === 'all' && selectedGenre === 'all' ? 'text-rose-500 font-black' : ''}`}
+              >
+                {t('navAll')}
+              </button>
+              <button
+                onClick={() => { setActiveTab('movies'); setSelectedGenre('all'); }}
+                className={`transition hover:text-white cursor-pointer ${activeTab === 'movies' && selectedGenre === 'all' ? 'text-rose-500 font-black' : ''}`}
               >
                 {t('navMovies')}
               </button>
               <button
-                onClick={() => setActiveTab('series')}
-                className={`transition hover:text-white cursor-pointer ${activeTab === 'series' ? 'text-rose-500 font-black' : ''}`}
+                onClick={() => { setActiveTab('series'); setSelectedGenre('all'); }}
+                className={`transition hover:text-white cursor-pointer ${activeTab === 'series' && selectedGenre === 'all' ? 'text-rose-500 font-black' : ''}`}
               >
                 {t('navSeries')}
               </button>
+
+              {/* Dynamic categories added by admin */}
+              {categories
+                .filter(c => !['all', 'movies', 'movie', 'series', 'web-series'].includes((c.slug || c.nameEnglish || '').toLowerCase()))
+                .map(cat => {
+                  const label = lang === 'mr' && cat.nameMarathi ? cat.nameMarathi : (lang === 'hi' && cat.nameMarathi ? cat.nameMarathi : cat.nameEnglish);
+                  const isSelected = selectedGenre.toLowerCase() === cat.nameEnglish.toLowerCase();
+                  return (
+                    <button
+                      key={cat.id}
+                      onClick={() => {
+                        setActiveTab('all');
+                        setSelectedGenre(cat.nameEnglish);
+                      }}
+                      className={`transition hover:text-white cursor-pointer flex items-center gap-1.5 ${isSelected ? 'text-rose-500 font-black' : ''}`}
+                    >
+                      <span>{label}</span>
+                      {cat.badgeText && (
+                        <span className="text-[9px] font-extrabold px-1.5 py-0.2 rounded-full bg-rose-600/20 text-rose-400 border border-rose-500/30">
+                          {cat.badgeText}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+
               <button
                 onClick={() => setActiveTab('plans')}
                 className={`transition hover:text-white cursor-pointer text-amber-400 flex items-center gap-1 ${activeTab === 'plans' ? 'font-black underline' : ''}`}
@@ -810,15 +865,25 @@ export default function OTTPlatformPage() {
         const heroId = heroMovie?.id || 'mov-1';
 
         return (
-        <section className="relative w-full h-[65vh] min-h-[460px] max-h-[640px] overflow-hidden bg-slate-950">
-          <div className="absolute inset-0">
+        <section className="relative w-full h-[58vh] sm:h-[65vh] min-h-[420px] sm:min-h-[460px] max-h-[640px] overflow-hidden bg-slate-950">
+          {/* Ambient Blurred Backdrop Layer for smooth edge fill */}
+          <div className="absolute inset-0 overflow-hidden">
+            <img
+              src={heroBackdrop}
+              alt="Hero Backdrop Blur"
+              className="w-full h-full object-cover blur-2xl opacity-45 scale-110"
+            />
+          </div>
+
+          {/* Foreground: FULL CRISP COVER IMAGE (Zero Cropping on mobile view, clear & vibrant) */}
+          <div className="absolute inset-0 flex items-center justify-center">
             <img
               src={heroBackdrop}
               alt="Hero Backdrop"
-              className="w-full h-full object-cover opacity-60 scale-105 transition-transform duration-1000"
+              className="w-full h-full object-contain sm:object-cover object-top opacity-95 transition-all duration-700"
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-[#070B14] via-[#070B14]/40 to-transparent" />
-            <div className="absolute inset-0 bg-gradient-to-r from-[#070B14] via-[#070B14]/60 to-transparent" />
+            <div className="absolute inset-0 bg-gradient-to-t from-[#070B14] via-[#070B14]/30 sm:via-[#070B14]/40 to-transparent" />
+            <div className="absolute inset-0 bg-gradient-to-r from-[#070B14]/90 sm:from-[#070B14] via-[#070B14]/40 sm:via-[#070B14]/60 to-transparent" />
           </div>
 
           <div className="relative z-10 max-w-7xl mx-auto h-full flex flex-col justify-end pb-16 px-4 sm:px-8 space-y-4">
@@ -829,6 +894,11 @@ export default function OTTPlatformPage() {
               <span className="px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-md text-amber-400 border border-amber-400/30 text-[10px] font-bold">
                 {heroMovie?.resolution || '4K UHD HDR'} • Dolby 5.1
               </span>
+              {heroMovie?.isPremium && (
+                <span className="px-2.5 py-1 rounded-full bg-gradient-to-r from-rose-600 to-amber-600 text-white border border-rose-500/30 text-[10px] font-black shadow-glow-crimson flex items-center gap-1">
+                  <Crown className="w-3 h-3" /> VIP Premium
+                </span>
+              )}
             </div>
 
             <h1 className="text-3xl sm:text-5xl font-black text-white tracking-tight max-w-2xl leading-tight drop-shadow-md">
@@ -871,6 +941,71 @@ export default function OTTPlatformPage() {
         </section>
         );
       })()}
+
+      {/* 2.5 DYNAMIC CATEGORIES PILLS BAR (Synced with Admin & Android App) */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-8 pt-6 pb-2">
+        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-2">
+          <button
+            onClick={() => { setSelectedGenre('all'); if (activeTab === 'plans') setActiveTab('all'); }}
+            className={`px-4 py-2 rounded-xl text-xs font-bold shrink-0 transition cursor-pointer ${
+              selectedGenre === 'all' && activeTab === 'all'
+                ? 'bg-gradient-to-r from-rose-600 to-amber-600 text-white shadow-md'
+                : 'bg-slate-900 border border-slate-800 text-slate-300 hover:text-white hover:bg-slate-800'
+            }`}
+          >
+            {t('navAll')}
+          </button>
+          <button
+            onClick={() => { setActiveTab('movies'); setSelectedGenre('all'); }}
+            className={`px-4 py-2 rounded-xl text-xs font-bold shrink-0 transition cursor-pointer ${
+              activeTab === 'movies' && selectedGenre === 'all'
+                ? 'bg-gradient-to-r from-rose-600 to-amber-600 text-white shadow-md'
+                : 'bg-slate-900 border border-slate-800 text-slate-300 hover:text-white hover:bg-slate-800'
+            }`}
+          >
+            {t('navMovies')}
+          </button>
+          <button
+            onClick={() => { setActiveTab('series'); setSelectedGenre('all'); }}
+            className={`px-4 py-2 rounded-xl text-xs font-bold shrink-0 transition cursor-pointer ${
+              activeTab === 'series' && selectedGenre === 'all'
+                ? 'bg-gradient-to-r from-rose-600 to-amber-600 text-white shadow-md'
+                : 'bg-slate-900 border border-slate-800 text-slate-300 hover:text-white hover:bg-slate-800'
+            }`}
+          >
+            {t('navSeries')}
+          </button>
+
+          {/* Dynamic Categories from Admin & Android App */}
+          {categories
+            .filter(c => !['all', 'movies', 'movie', 'series', 'web-series'].includes((c.slug || c.nameEnglish || '').toLowerCase()))
+            .map(cat => {
+              const label = lang === 'mr' && cat.nameMarathi ? cat.nameMarathi : (lang === 'hi' && cat.nameMarathi ? cat.nameMarathi : cat.nameEnglish);
+              const isSelected = selectedGenre.toLowerCase() === cat.nameEnglish.toLowerCase();
+              return (
+                <button
+                  key={cat.id}
+                  onClick={() => {
+                    setActiveTab('all');
+                    setSelectedGenre(cat.nameEnglish);
+                  }}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold shrink-0 flex items-center gap-1.5 transition cursor-pointer ${
+                    isSelected
+                      ? 'bg-gradient-to-r from-rose-600 to-amber-600 text-white shadow-md'
+                      : 'bg-slate-900 border border-slate-800 text-slate-300 hover:text-white hover:bg-slate-800'
+                  }`}
+                >
+                  <span>{label}</span>
+                  {cat.badgeText && (
+                    <span className="text-[9px] font-extrabold px-1.5 py-0.2 rounded-full bg-black/40 text-amber-300">
+                      {cat.badgeText}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+        </div>
+      </section>
 
       {/* 3. CONTINUE WATCHING / WATCH HISTORY (MANDATORY REQUIREMENT E) */}
       {currentUser && (() => {
@@ -979,7 +1114,17 @@ export default function OTTPlatformPage() {
 
                   {/* Current Program info */}
                   <div className="absolute bottom-4 left-4 right-4 flex items-center gap-3">
-                    <img src={ch.logo} alt={getChannelTitle(ch)} className="w-12 h-12 rounded-xl object-cover border-2 border-white/30 shadow-md shrink-0" />
+                    <img 
+                      src={ch.logo || '/app_logo.png'} 
+                      alt={getChannelTitle(ch)} 
+                      onError={(e) => {
+                        const target = e.currentTarget as HTMLImageElement;
+                        if (!target.src.includes('app_logo.png')) {
+                          target.src = '/app_logo.png';
+                        }
+                      }}
+                      className="w-12 h-12 rounded-xl object-contain bg-white p-1 border-2 border-white/30 shadow-md shrink-0" 
+                    />
                     <div className="overflow-hidden">
                       <h3 className="font-black text-base text-white truncate drop-shadow">{getChannelTitle(ch)}</h3>
                       <p className="text-xs text-amber-300 font-semibold truncate">
@@ -1106,6 +1251,11 @@ export default function OTTPlatformPage() {
                         <span className="px-1.5 py-0.5 rounded bg-black/70 backdrop-blur-md text-amber-400 text-[9px] font-black border border-amber-500/30">
                           {movie.resolution || '4K UHD'}
                         </span>
+                        {movie.isPremium && (
+                          <span className="px-1.5 py-0.5 rounded bg-gradient-to-r from-rose-600 to-amber-600 text-white text-[9px] font-black shadow-glow-crimson flex items-center gap-1">
+                            <Crown className="w-2.5 h-2.5" /> VIP
+                          </span>
+                        )}
                       </div>
 
                       <button
@@ -1163,10 +1313,15 @@ export default function OTTPlatformPage() {
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-transparent" />
-                  <div className="absolute top-3 left-3">
+                  <div className="absolute top-3 left-3 flex flex-col gap-1.5 items-start">
                     <span className="px-2 py-0.5 rounded-full bg-purple-600 text-white font-bold text-[10px]">
                       {t('season1Badge')}
                     </span>
+                    {series.isPremium && (
+                      <span className="px-1.5 py-0.5 rounded-full bg-gradient-to-r from-rose-600 to-amber-600 text-white font-black text-[10px] shadow-glow-crimson flex items-center gap-1">
+                        <Crown className="w-3 h-3" /> VIP
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -1326,12 +1481,19 @@ export default function OTTPlatformPage() {
       {detailItem && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="max-w-2xl w-full bg-slate-900 rounded-3xl border border-slate-700 shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto p-6 space-y-4">
-            <div className="relative h-64 rounded-2xl overflow-hidden bg-slate-950">
+            <div className="relative h-64 sm:h-72 rounded-2xl overflow-hidden bg-slate-950 flex items-center justify-center">
+              <div className="absolute inset-0 overflow-hidden">
+                <img 
+                  src={getSafeImageUrl(detailItem.banner || detailItem.poster)} 
+                  alt={getContentTitle(detailItem)} 
+                  className="w-full h-full object-cover blur-2xl opacity-40 scale-110" 
+                />
+              </div>
               <img 
                 src={getSafeImageUrl(detailItem.banner || detailItem.poster)} 
                 alt={getContentTitle(detailItem)} 
                 onError={(e) => handleImageError(e)}
-                className="w-full h-full object-cover" 
+                className="relative z-10 max-w-full max-h-full object-contain" 
               />
               <button
                 onClick={() => setDetailItem(null)}

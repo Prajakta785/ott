@@ -15,7 +15,8 @@ import {
   Play,
   Film,
   X,
-  Video
+  Video,
+  Headphones
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -23,6 +24,7 @@ import { Modal } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { BunnyUploader } from '@/components/bunny-uploader';
 import { VideoPlayer } from '@/components/video-player';
+import { ConnectAudioModal } from '@/components/connect-audio-modal';
 import { firestoreService } from '@/lib/firestore-service';
 import { ContentItem, Season, Episode } from '@/lib/types';
 import { formatDuration, formatViews, slugify } from '@/lib/utils';
@@ -58,11 +60,22 @@ export default function SeriesPage() {
   const [currentEpisode, setCurrentEpisode] = useState<Partial<Episode>>({});
   const [isEditingEpisode, setIsEditingEpisode] = useState(false);
 
+  // Connect Audio Modal State
+  const [seriesForAudio, setSeriesForAudio] = useState<ContentItem | null>(null);
+
+  const handleSeriesAudioUpdated = (updated: ContentItem) => {
+    setSeriesList(prev => prev.map(s => s.id === updated.id ? updated : s));
+    if (selectedSeries?.id === updated.id) {
+      setSelectedSeries(updated);
+    }
+  };
+
   // Video Preview Modal State
   const [previewVideo, setPreviewVideo] = useState<{
     url: string;
     title: string;
     poster?: string;
+    audioSrc?: string;
   } | null>(null);
 
   // Saving State
@@ -133,6 +146,15 @@ export default function SeriesPage() {
     setIsEditingSeries(false);
     setIsSeriesModalOpen(true);
   };
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('action') === 'create') {
+        handleOpenCreateSeries();
+      }
+    }
+  }, []);
 
   const handleSaveSeries = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -533,6 +555,7 @@ export default function SeriesPage() {
                         url: selectedSeries.videoId || selectedSeries.trailerUrl!,
                         title: `${selectedSeries.title} - ${selectedSeries.videoId ? 'Video' : 'Trailer'}`,
                         poster: selectedSeries.banner || selectedSeries.poster,
+                        audioSrc: selectedSeries.audioUrl || selectedSeries.audioTrackUrl,
                       });
                     }}
                     className="gap-2 font-bold shadow-sm"
@@ -541,6 +564,19 @@ export default function SeriesPage() {
                     {lang === 'mr' ? 'व्हिडिओ / ट्रेलर प्ले करा' : lang === 'hi' ? 'वीडियो / ट्रेलर चलाएं' : 'Play Video / Trailer'}
                   </Button>
                 )}
+
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setSeriesForAudio(selectedSeries)}
+                  className="border-orange-300 text-orange-700 bg-orange-50 hover:bg-orange-100 gap-1.5 font-bold shadow-xs cursor-pointer"
+                >
+                  <Headphones className="w-3.5 h-3.5 text-orange-600" />
+                  {selectedSeries.audioUrl 
+                    ? (lang === 'mr' ? 'ऑडिओ कनेक्टेड' : 'Audio Connected') 
+                    : (lang === 'mr' ? 'ऑडिओ कनेक्ट करा' : 'Connect Audio')}
+                </Button>
                 {selectedSeries.videoId && selectedSeries.trailerUrl && (
                   <Button
                     type="button"
@@ -1159,12 +1195,22 @@ export default function SeriesPage() {
             </div>
             <VideoPlayer
               src={previewVideo.url}
+              audioSrc={previewVideo.audioSrc}
               poster={previewVideo.poster}
+              title={previewVideo.title}
               autoPlay={true}
             />
           </div>
         </div>
       )}
+
+      {/* Connect Audio Modal */}
+      <ConnectAudioModal
+        isOpen={!!seriesForAudio}
+        onClose={() => setSeriesForAudio(null)}
+        item={seriesForAudio}
+        onAudioUpdated={handleSeriesAudioUpdated}
+      />
     </div>
   );
 }

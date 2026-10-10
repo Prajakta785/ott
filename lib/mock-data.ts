@@ -132,42 +132,88 @@ export const initialAnalytics: ContentAnalytics[] = [];
 export const initialNotifications: NotificationItem[] = [];
 export const initialCategories: ContentCategory[] = [
   {
+    id: 'cat-live',
+    nameMarathi: 'लाईव्ह टीव्ही',
+    nameEnglish: 'Live',
+    type: 'live',
+    subCategories: ['Live TV', 'ग्रामीण भारत Live', 'विशेष प्रसारण'],
+    badgeText: 'Live TV',
+    badgeColor: 'bg-red-50 text-red-600 border-red-200',
+    iconName: 'Radio',
+    slug: 'live',
+    order: 1
+  },
+  {
     id: 'cat-news',
-    nameMarathi: 'बातम्या (News)',
-    nameEnglish: 'News & Samachar',
+    nameMarathi: 'बातम्या',
+    nameEnglish: 'News',
     type: 'news',
-    subCategories: ['महाराष्ट्र', 'जिल्हा बातम्या', 'तालुका बातम्या', 'ग्रामीण बातम्या', 'राजकीय बातम्या', 'सामाजिक बातम्या', 'शेतकरी बातम्या', 'रोजगार', 'शिक्षण', 'आरोग्य', 'स्थानिक प्रशासन', 'विशेष बातमी']
+    subCategories: ['महाराष्ट्र', 'जिल्हा बातम्या', 'तालुका बातम्या', 'ग्रामीण बातम्या', 'राजकीय बातम्या', 'सामाजिक बातम्या', 'शेतकरी बातम्या'],
+    badgeText: 'News',
+    badgeColor: 'bg-amber-50 text-amber-700 border-amber-200',
+    iconName: 'Newspaper',
+    slug: 'news',
+    order: 2
+  },
+  {
+    id: 'cat-namdar-maharashtra',
+    nameMarathi: 'नामदार महाराष्ट्र',
+    nameEnglish: 'Namdar Maharashtra',
+    type: 'video',
+    subCategories: ['संस्कृती', 'परंपरा', 'लोककला', 'पर्यटन', 'इतिहास'],
+    badgeText: 'Regional',
+    badgeColor: 'bg-purple-50 text-purple-700 border-purple-200',
+    iconName: 'MapPin',
+    slug: 'namdar-maharashtra',
+    order: 3
+  },
+  {
+    id: 'cat-gramin-bharat-tv',
+    nameMarathi: 'ग्रामीण भारत TV',
+    nameEnglish: 'Gramin Bharat TV',
+    type: 'video',
+    subCategories: ['शेती व कृषी', 'ग्रामीण विकास', 'शेतकरी योजना', 'पंचायत राज'],
+    badgeText: 'Rural',
+    badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    iconName: 'Tractor',
+    slug: 'gramin-bharat-tv',
+    order: 4
+  },
+  {
+    id: 'cat-entertainment',
+    nameMarathi: 'मनोरंजन',
+    nameEnglish: 'Entertainment',
+    type: 'video',
+    subCategories: ['मनोरंजन शो', 'संगीत', 'कॉमेडी', 'नाट्यप्रयोग', 'कला'],
+    badgeText: 'Shows',
+    badgeColor: 'bg-purple-50 text-purple-700 border-purple-200',
+    iconName: 'Clapperboard',
+    slug: 'entertainment',
+    order: 5
   },
   {
     id: 'cat-movies',
-    nameMarathi: 'चित्रपट (Movies)',
-    nameEnglish: 'Movies & Cinema',
+    nameMarathi: 'चित्रपट',
+    nameEnglish: 'Movies',
     type: 'movie',
-    subCategories: ['मराठी चित्रपट', 'हिंदी चित्रपट', 'Short Films', 'ग्रामीण कथा', 'सामाजिक चित्रपट', 'कॉमेडी', 'मनोरंजन कार्यक्रम', 'ऐतिहासिक']
+    subCategories: ['मराठी चित्रपट', 'हिंदी चित्रपट', 'Short Films', 'ग्रामीण कथा', 'सामाजिक चित्रपट'],
+    badgeText: '4K VOD',
+    badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    iconName: 'Film',
+    slug: 'movies',
+    order: 6
   },
   {
     id: 'cat-series',
-    nameMarathi: 'वेब मालिका (Web Series)',
-    nameEnglish: 'Web Series & Shows',
+    nameMarathi: 'वेब मालिका',
+    nameEnglish: 'Web Series',
     type: 'series',
-    subCategories: ['ग्रामीण कथा', 'सामाजिक नाटक', 'सस्पेन्स थ्रिलर', 'कौटुंबिक', 'कॉमेडी']
-  },
-  {
-    id: 'cat-podcasts',
-    nameMarathi: 'पॉडकास्ट (Podcasts)',
-    nameEnglish: 'Podcasts & Audio',
-    type: 'podcast',
-    subCategories: [
-      'कृषी व शेती (Agriculture & Farming)',
-      'ग्रामीण संस्कृती व लोककला (Rural Culture & Folk)',
-      'बातम्या व राजकीय विश्लेषण (News & Politics)',
-      'आरोग्य व जीवनशैली (Health & Lifestyle)',
-      'शिक्षण व करिअर (Education & Youth)',
-      'उद्योग व शेतकरी यशोगाथा (Success Stories & Business)',
-      'मनोरंजन व संगीत (Entertainment & Music)',
-      'मुलाखती व व्यक्तिविशेष (Interviews & Biographies)',
-      'सामाजिक प्रश्न व जनजागृती (Social Awareness)'
-    ]
+    subCategories: ['ग्रामीण कथा', 'सामाजिक नाटक', 'सस्पेन्स थ्रिलर', 'कौटुंबिक', 'कॉमेडी'],
+    badgeText: 'Series',
+    badgeColor: 'bg-pink-50 text-pink-700 border-pink-200',
+    iconName: 'Tv',
+    slug: 'web-series',
+    order: 7
   }
 ];
 
@@ -200,7 +246,7 @@ export const initialBunnyConfig: BunnyConfig = {
   streamLibraryId: '767488',
   storageZoneName: 'graminbharat',
   storageApiKey: '2d3836f0-1ac0-4550-bc5638b69bd8-18c0-45d9',
-  cdnHostname: 'vz-1192802e-f33.b-cdn.net',
+  cdnHostname: 'vz-92cc7e0f-cd7.b-cdn.net',
   tokenSecurityKey: 'af71bff6-aa4a-4222-a99e-9589d3bed97c',
 };
 

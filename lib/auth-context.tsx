@@ -307,6 +307,7 @@ export const ROLE_PERMISSIONS: Record<AdminRole, string[]> = {
     '/movies',
     '/series',
     '/podcasts',
+    '/media',
     '/banners',
     '/company',
     '/reports'
@@ -317,6 +318,7 @@ export const ROLE_PERMISSIONS: Record<AdminRole, string[]> = {
     '/movies',
     '/series',
     '/podcasts',
+    '/media',
     '/reports'
   ],
   reporter: [
@@ -344,6 +346,7 @@ export const ROLE_PERMISSIONS: Record<AdminRole, string[]> = {
     '/movies',
     '/series',
     '/podcasts',
+    '/media',
     '/notifications',
     '/company',
     '/reports'
@@ -353,7 +356,8 @@ export const ROLE_PERMISSIONS: Record<AdminRole, string[]> = {
     '/live',
     '/movies',
     '/series',
-    '/podcasts'
+    '/podcasts',
+    '/media'
   ]
 };
 

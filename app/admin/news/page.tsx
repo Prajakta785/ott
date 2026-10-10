@@ -17,10 +17,12 @@ import {
   Check, 
   X,
   RadioTower,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Headphones
 } from 'lucide-react';
 import { useLanguage } from '@/lib/i18n';
 import { BunnyUploader } from '@/components/bunny-uploader';
+import { ConnectAudioModal } from '@/components/connect-audio-modal';
 import { getSafeImageUrl, handleImageError } from '@/lib/image-utils';
 
 const MAHARASHTRA_DISTRICTS = [
@@ -64,6 +66,8 @@ const MAHARASHTRA_DISTRICTS = [
 ];
 
 const NEWS_SUBCATEGORIES = [
+  'Namdar Maharashtra',
+  'Gramin Bharat TV',
   'महाराष्ट्र',
   'जिल्हा बातम्या',
   'तालुका बातम्या',
@@ -101,6 +105,11 @@ export default function NewsCMSPage() {
   const [selectedDistrict, setSelectedDistrict] = useState('All');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<ContentItem | null>(null);
+  const [newsForAudio, setNewsForAudio] = useState<ContentItem | null>(null);
+
+  const handleNewsAudioUpdated = (updated: ContentItem) => {
+    setNewsList(prev => prev.map(n => n.id === updated.id ? updated : n));
+  };
 
   const [formData, setFormData] = useState({
     title: '',
@@ -147,6 +156,15 @@ export default function NewsCMSPage() {
     setIsModalOpen(true);
   };
 
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('action') === 'create') {
+        openCreateModal();
+      }
+    }
+  }, []);
+
   const openEditModal = (item: ContentItem) => {
     setEditingItem(item);
     setFormData({
@@ -177,30 +195,30 @@ export default function NewsCMSPage() {
     const item: ContentItem = {
       id,
       type: 'news',
-      title: formData.title,
+      title: formData.title || '',
       slug: editingItem?.slug || slug,
-      description: formData.description,
-      tags: ['News', 'बातम्या', formData.district, formData.subCategory],
-      genres: ['News', formData.subCategory],
-      cast: [formData.reporterName],
+      description: formData.description || '',
+      tags: ['News', 'बातम्या', formData.district, formData.subCategory].filter(Boolean) as string[],
+      genres: ['News', formData.subCategory || 'General News'].filter(Boolean) as string[],
+      cast: [formData.reporterName || 'विशेष प्रतिनिधी'],
       director: 'ग्रामीण भारत टीव्ही / नामदार महाराष्ट्र',
       language: ['Marathi'],
       releaseDate: editingItem?.releaseDate || new Date().toISOString(),
-      poster: finalPoster,
-      banner: finalBanner,
+      poster: finalPoster || '',
+      banner: finalBanner || '',
       isPremium: false,
-      isFeatured: formData.isFeatured,
-      status: formData.status,
+      isFeatured: !!formData.isFeatured,
+      status: formData.status || 'published',
       rating: 'All',
       views: editingItem?.views || 0,
       createdAt: editingItem?.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      reporterName: formData.reporterName,
-      district: formData.district,
-      taluka: formData.taluka,
-      village: formData.village,
-      subCategory: formData.subCategory,
-      videoId: formData.videoId,
+      reporterName: formData.reporterName || '',
+      district: formData.district || '',
+      taluka: formData.taluka || '',
+      village: formData.village || '',
+      subCategory: formData.subCategory || 'General News',
+      videoId: formData.videoId || '',
       resolution: '1080p Full HD',
     };
 
@@ -349,6 +367,14 @@ export default function NewsCMSPage() {
                   </td>
                   <td className="py-4 px-5 text-right">
                     <div className="flex items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setNewsForAudio(item)}
+                        className="p-1.5 text-slate-400 hover:text-orange-600 rounded-lg transition cursor-pointer"
+                        title={lang === 'mr' ? 'ऑडिओ कनेक्ट करा' : 'Connect Audio'}
+                      >
+                        <Headphones className="w-4 h-4" />
+                      </button>
                       <button
                         onClick={() => openEditModal(item)}
                         className="p-1.5 text-slate-400 hover:text-slate-900 rounded-lg transition"
@@ -581,6 +607,14 @@ export default function NewsCMSPage() {
           </div>
         </div>
       )}
+
+      {/* Connect Audio Modal */}
+      <ConnectAudioModal
+        isOpen={!!newsForAudio}
+        onClose={() => setNewsForAudio(null)}
+        item={newsForAudio}
+        onAudioUpdated={handleNewsAudioUpdated}
+      />
     </div>
   );
 }

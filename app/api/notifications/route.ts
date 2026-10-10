@@ -1,28 +1,47 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { syncDocToFirestore, deleteDocFromFirestore, fetchDocsFromFirestore } from '@/lib/firestore-admin-sync';
+import { syncDocToFirestore, deleteDocFromFirestore, fetchDocsFromFirestore, recordDeletedContentInFirestore, getDeletedContentIds } from '@/lib/firestore-admin-sync';
+import { getServerNotifications, saveServerNotification, deleteServerNotification } from '@/lib/server-store';
 import { NotificationItem } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
-// GET: Fetch all broadcast notifications directly from Cloud Firestore
+// GET: Fetch all broadcast notifications directly from Cloud Firestore & server-store
 export async function GET() {
   try {
-    const rawNotifs = await fetchDocsFromFirestore('notifications');
-    const notifs: NotificationItem[] = (rawNotifs || [])
-      .filter((n: any) => n.id && n.title)
-      .map((n: any) => ({
-        id: n.id,
-        title: n.title || '',
-        message: n.message || '',
-        category: n.category || 'breaking_news',
-        targetType: n.targetType || 'all',
-        targetValue: n.targetValue || '',
-        deepLinkUrl: n.deepLinkUrl || '',
-        sentAt: n.sentAt || new Date().toISOString(),
-        sentBy: n.sentBy || 'Super Admin',
-        status: n.status || 'sent',
-        recipientsCount: typeof n.recipientsCount === 'number' ? n.recipientsCount : 1,
-      }))
+    const deletedIds = await getDeletedContentIds();
+    let remoteNotifs: NotificationItem[] = [];
+    try {
+      const rawNotifs = await fetchDocsFromFirestore('notifications');
+      remoteNotifs = (rawNotifs || [])
+        .filter((n: any) => n.id && n.title && !deletedIds.includes(n.id))
+        .map((n: any) => ({
+          id: n.id,
+          title: n.title || '',
+          message: n.message || '',
+          category: n.category || 'breaking_news',
+          targetType: n.targetType || 'all',
+          targetValue: n.targetValue || '',
+          deepLinkUrl: n.deepLinkUrl || '',
+          sentAt: n.sentAt || new Date().toISOString(),
+          sentBy: n.sentBy || 'Super Admin',
+          status: n.status || 'sent',
+          recipientsCount: typeof n.recipientsCount === 'number' ? n.recipientsCount : 1,
+        }));
+    } catch (e) {
+      console.warn('Firestore fetchDocs notifications notice:', e);
+    }
+
+    const localNotifs = getServerNotifications();
+    const map = new Map<string, NotificationItem>();
+    localNotifs.forEach(n => {
+      if (!deletedIds.includes(n.id)) map.set(n.id, n);
+    });
+    remoteNotifs.forEach(n => {
+      if (!deletedIds.includes(n.id)) map.set(n.id, n);
+    });
+
+    const notifs: NotificationItem[] = Array.from(map.values())
+      .filter((n: any) => !n.id.startsWith('notif-demo') && !deletedIds.includes(n.id))
       .sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime());
 
     return NextResponse.json({
@@ -64,7 +83,10 @@ export async function POST(req: NextRequest) {
       recipientsCount: typeof body.recipientsCount === 'number' ? body.recipientsCount : 1,
     };
 
-    // Save directly to Cloud Firestore 'notifications' collection via Admin REST
+    // 1. Save to local server store
+    saveServerNotification(sanitized);
+
+    // 2. Save directly to Cloud Firestore 'notifications' collection via Admin REST
     const synced = await syncDocToFirestore('notifications', notifId, sanitized);
 
     return NextResponse.json({
@@ -89,10 +111,18 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'Notification ID is required' }, { status: 400 });
     }
 
+    deleteServerNotification(id);
     await deleteDocFromFirestore('notifications', id);
+    await recordDeletedContentInFirestore(id, {
+      id,
+      type: 'notification',
+      deletedAt: new Date().toISOString(),
+    });
+
     return NextResponse.json({
       success: true,
       message: `Notification ${id} deleted successfully`,
+      deletedId: id,
     }, {
       headers: { 'Access-Control-Allow-Origin': '*' }
     });

@@ -19,10 +19,13 @@ import {
   ShieldCheck,
   Zap,
   Trash2,
-  Headphones
+  Headphones,
+  VolumeX,
+  Music
 } from 'lucide-react';
 import { StatsCard } from '@/components/stats-card';
 import { ConfirmDialog } from '@/components/confirm-dialog';
+import { ConnectAudioModal } from '@/components/connect-audio-modal';
 import { firestoreService } from '@/lib/firestore-service';
 import { ContentItem, User, Subscription } from '@/lib/types';
 import { formatCurrency, formatViews } from '@/lib/utils';
@@ -38,7 +41,12 @@ export default function DashboardPage() {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [loading, setLoading] = useState(true);
   const [itemToDelete, setItemToDelete] = useState<ContentItem | null>(null);
+  const [itemForAudio, setItemForAudio] = useState<ContentItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleAudioUpdated = (updated: ContentItem) => {
+    setContent(prev => prev.map(c => c.id === updated.id ? updated : c));
+  };
 
   const handleDeleteConfirm = async () => {
     if (!itemToDelete) return;
@@ -123,13 +131,6 @@ export default function DashboardPage() {
               <Link href="/series?action=create">
                 <button className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-white border border-white/20 text-xs font-bold flex items-center gap-2 transition active:scale-95">
                   <Tv className="w-3.5 h-3.5 text-slate-200" /> {t('actionSeries')}
-                </button>
-              </Link>
-            )}
-            {hasAccessTo('/podcasts') && (
-              <Link href="/podcasts">
-                <button className="px-4 py-2 rounded-xl bg-[#EA580C] hover:bg-[#C2410C] text-white text-xs font-bold flex items-center gap-2 shadow-sm transition active:scale-95">
-                  <Headphones className="w-3.5 h-3.5 text-white" /> {t('navPodcastsAdmin')}
                 </button>
               </Link>
             )}
@@ -273,7 +274,20 @@ export default function DashboardPage() {
                         />
                         <div>
                           <p className="font-bold text-[#2D2522] text-sm">{item.title}</p>
-                          <p className="text-xs text-[#7A6F68] mt-0.5">{item.director} · {item.releaseDate?.substring(0, 4)}</p>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <p className="text-xs text-[#7A6F68]">{item.director || 'ग्रामीण भारत'} · {item.releaseDate?.substring(0, 4)}</p>
+                            {item.audioUrl ? (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full shadow-2xs">
+                                <Headphones className="w-2.5 h-2.5 text-emerald-600" />
+                                <span>{lang === 'mr' ? 'ऑडिओ जोडला' : 'Audio Connected'}</span>
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full shadow-2xs">
+                                <VolumeX className="w-2.5 h-2.5 text-amber-600" />
+                                <span>{lang === 'mr' ? 'ऑडिओ नाही' : 'No Audio'}</span>
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </td>
@@ -299,15 +313,27 @@ export default function DashboardPage() {
                       </span>
                     </td>
                     <td className="py-3.5 text-right">
-                      {canDelete && (
+                      <div className="flex items-center justify-end gap-1.5">
                         <button
-                          onClick={() => setItemToDelete(item)}
-                          className="p-2 rounded-xl text-[#A89C94] hover:text-[#DC2626] hover:bg-[#FEE2E2] border border-transparent hover:border-[#FCA5A5] transition-all inline-flex items-center justify-center group"
-                          title={t('deleteMovie') || 'Delete'}
+                          type="button"
+                          onClick={() => setItemForAudio(item)}
+                          className="px-2.5 py-1.5 rounded-xl bg-orange-50 hover:bg-orange-100 text-[#EA580C] border border-orange-200 text-xs font-bold transition flex items-center gap-1 cursor-pointer active:scale-95 shadow-2xs"
+                          title={lang === 'mr' ? 'या व्हिडिओला ऑडिओ कनेक्ट करा' : 'Connect Audio to Video'}
                         >
-                          <Trash2 className="w-4 h-4 text-[#A89C94] group-hover:text-[#DC2626] transition-colors" />
+                          <Headphones className="w-3.5 h-3.5" />
+                          <span className="hidden sm:inline">{lang === 'mr' ? 'ऑडिओ जोडा' : 'Audio'}</span>
                         </button>
-                      )}
+
+                        {canDelete && (
+                          <button
+                            onClick={() => setItemToDelete(item)}
+                            className="p-2 rounded-xl text-[#A89C94] hover:text-[#DC2626] hover:bg-[#FEE2E2] border border-transparent hover:border-[#FCA5A5] transition-all inline-flex items-center justify-center group cursor-pointer"
+                            title={t('deleteMovie') || 'Delete'}
+                          >
+                            <Trash2 className="w-4 h-4 text-[#A89C94] group-hover:text-[#DC2626] transition-colors" />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -326,6 +352,14 @@ export default function DashboardPage() {
         message={itemToDelete ? `${t('deleteConfirmMovie')} (${itemToDelete.title})` : t('deleteConfirmMovie')}
         confirmText={t('deleteMovie')}
         loading={isDeleting}
+      />
+
+      {/* Connect Audio Modal */}
+      <ConnectAudioModal
+        isOpen={!!itemForAudio}
+        onClose={() => setItemForAudio(null)}
+        item={itemForAudio}
+        onAudioUpdated={handleAudioUpdated}
       />
     </div>
   );

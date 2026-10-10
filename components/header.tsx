@@ -25,6 +25,7 @@ import { useAuth } from '@/lib/auth-context';
 import { firestoreService } from '@/lib/firestore-service';
 import { ContentItem, LiveChannel, NotificationItem } from '@/lib/types';
 import { LanguageSwitcher } from '@/components/language-switcher';
+import { AddCategoryModal } from '@/components/add-category-modal';
 import { useLanguage } from '@/lib/i18n';
 
 export function Header({ onToggleSidebar }: { onToggleSidebar?: () => void }) {
@@ -32,6 +33,7 @@ export function Header({ onToggleSidebar }: { onToggleSidebar?: () => void }) {
   const { role, canEdit, hasAccessTo } = useAuth();
   const { t, lang } = useLanguage();
   const [showAddMenu, setShowAddMenu] = useState(false);
+  const [isAddCategoryOpen, setIsAddCategoryOpen] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [hasUnread, setHasUnread] = useState(true);
@@ -68,7 +70,7 @@ export function Header({ onToggleSidebar }: { onToggleSidebar?: () => void }) {
   const [isSearching, setIsSearching] = useState(false);
   const searchContainerRef = useRef<HTMLDivElement>(null);
 
-  // Load recent notifications
+  // Load recent notifications with live interval & event syncing
   useEffect(() => {
     async function loadNotifs() {
       try {
@@ -76,12 +78,29 @@ export function Header({ onToggleSidebar }: { onToggleSidebar?: () => void }) {
         setNotifications(notifs);
         if (notifs.length === 0) {
           setHasUnread(false);
+        } else {
+          setHasUnread(true);
         }
       } catch (e) {
         console.warn('Failed to load notifications in header:', e);
       }
     }
     loadNotifs();
+
+    // Auto-poll notifications every 8 seconds so app submissions appear live without refresh
+    const interval = setInterval(loadNotifs, 8000);
+
+    const handleUpdate = () => loadNotifs();
+    window.addEventListener('ott_notification_created', handleUpdate);
+    window.addEventListener('ott_grievance_created', handleUpdate);
+    window.addEventListener('storage', handleUpdate);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('ott_notification_created', handleUpdate);
+      window.removeEventListener('ott_grievance_created', handleUpdate);
+      window.removeEventListener('storage', handleUpdate);
+    };
   }, []);
 
   useEffect(() => {
@@ -144,7 +163,8 @@ export function Header({ onToggleSidebar }: { onToggleSidebar?: () => void }) {
   const totalResults = searchResults.content.length + searchResults.liveChannels.length;
 
   return (
-    <header className="h-16 border-b border-[#E5DBCA] bg-[#FAF7F2]/95 backdrop-blur-xl px-3 sm:px-6 flex items-center justify-between sticky top-0 z-20 shadow-xs text-[#2D2522]">
+    <>
+      <header className="h-16 border-b border-[#E5DBCA] bg-[#FAF7F2]/95 backdrop-blur-xl px-3 sm:px-6 flex items-center justify-between sticky top-0 z-20 shadow-xs text-[#2D2522]">
       {/* Search Input & Mobile Menu Toggle */}
       <div className="flex items-center gap-2 sm:gap-4 flex-1 max-w-md">
         <button
@@ -202,7 +222,17 @@ export function Header({ onToggleSidebar }: { onToggleSidebar?: () => void }) {
                     className="flex items-center justify-between p-2 rounded-xl hover:bg-[#FAF7F2] transition text-xs group"
                   >
                     <div className="flex items-center gap-2.5 truncate">
-                      <img src={ch.logo} alt={ch.channelName} className="w-6 h-6 rounded-md object-cover border border-[#E5DBCA]" />
+                      <img 
+                        src={ch.logo || '/app_logo.png'} 
+                        alt={ch.channelName} 
+                        onError={(e) => {
+                          const target = e.currentTarget as HTMLImageElement;
+                          if (!target.src.includes('app_logo.png')) {
+                            target.src = '/app_logo.png';
+                          }
+                        }}
+                        className="w-6 h-6 rounded-md object-contain bg-white p-0.5 border border-[#E5DBCA]" 
+                      />
                       <span className="font-bold text-[#2D2522] group-hover:text-[#EA580C] truncate">{ch.channelName}</span>
                     </div>
                     <span className="text-[10px] font-bold text-[#166534] bg-[#EAF5EF] px-2 py-0.5 rounded-full border border-[#B7E2CD]">
@@ -305,6 +335,27 @@ export function Header({ onToggleSidebar }: { onToggleSidebar?: () => void }) {
                           </Link>
                         );
                       })}
+
+                      {/* Add Custom Category Option */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowAddMenu(false);
+                          setIsAddCategoryOpen(true);
+                        }}
+                        className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-xs font-bold text-amber-700 bg-amber-50/80 hover:bg-amber-100/90 rounded-xl transition-all cursor-pointer border border-amber-200/60 mt-1 active:scale-95 group text-left"
+                      >
+                        <Sparkles className="w-4 h-4 text-amber-600 group-hover:rotate-12 transition-transform shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-extrabold truncate">
+                            {lang === 'mr' ? '+ नवीन कॅटेगरी जोडा' : lang === 'hi' ? '+ नई श्रेणी जोड़ें' : '+ Add Category'}
+                          </p>
+                          <p className="text-[10px] text-amber-600/80 font-normal truncate">
+                            {lang === 'mr' ? 'कस्टम कॅटेगरी व आयकॉन' : 'Custom Category'}
+                          </p>
+                        </div>
+                      </button>
                     </div>
                   )}
                 </>
@@ -375,47 +426,62 @@ export function Header({ onToggleSidebar }: { onToggleSidebar?: () => void }) {
                     </p>
                   </div>
                 ) : (
-                  notifications.map((item) => (
-                    <div 
-                      key={item.id} 
-                      onClick={() => handleNotificationSeen(item.id, item.deepLinkUrl)}
-                      className="p-3.5 hover:bg-emerald-50/40 transition-all cursor-pointer group relative active:scale-[0.99]"
-                      title={lang === 'mr' ? 'पाहण्यासाठी क्लिक करा (आपोआप डिलीट होईल)' : 'Click to view (will auto-delete)'}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="text-xs font-bold text-[#2D2522] leading-snug group-hover:text-[#166534] transition-colors">
-                          {item.title}
-                        </p>
-                        <div className="flex items-center gap-1 shrink-0">
-                          <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-[#FAF7F2] text-[#7A6F68] border border-[#E5DBCA]">
-                            {item.category?.replace('_', ' ') || 'Alert'}
+                  notifications.map((item) => {
+                    const isGrievance = item.category === 'grievance' || item.title?.includes('जनतेचा आवाज');
+                    return (
+                      <div 
+                        key={item.id} 
+                        onClick={() => handleNotificationSeen(item.id, item.deepLinkUrl || (isGrievance ? '/admin/grievances' : undefined))}
+                        className={`p-3.5 transition-all cursor-pointer group relative active:scale-[0.99] ${
+                          isGrievance 
+                            ? 'bg-amber-50/70 hover:bg-amber-100/80 border-l-4 border-l-[#EA580C]' 
+                            : 'hover:bg-emerald-50/40'
+                        }`}
+                        title={lang === 'mr' ? 'पाहण्यासाठी क्लिक करा (आपोआप डिलीट होईल)' : 'Click to view (will auto-delete)'}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <p className={`text-xs font-bold leading-snug transition-colors ${
+                            isGrievance ? 'text-[#7C2D12] group-hover:text-[#EA580C]' : 'text-[#2D2522] group-hover:text-[#166534]'
+                          }`}>
+                            {item.title}
+                          </p>
+                          <div className="flex items-center gap-1 shrink-0">
+                            {isGrievance ? (
+                              <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-orange-100 text-[#C2410C] border border-orange-300 flex items-center gap-1 shadow-2xs">
+                                📢 {lang === 'mr' ? 'जनतेचा आवाज' : lang === 'hi' ? 'जनता की आवाज' : 'Citizen Voice'}
+                              </span>
+                            ) : (
+                              <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-[#FAF7F2] text-[#7A6F68] border border-[#E5DBCA]">
+                                {item.category?.replace('_', ' ') || 'Alert'}
+                              </span>
+                            )}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleNotificationSeen(item.id);
+                              }}
+                              className="p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                              title={lang === 'mr' ? 'पाहिले - डिलीट करा' : 'Seen & Delete'}
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
+                        </div>
+                        <p className="text-xs text-[#7A6F68] mt-1 line-clamp-2 leading-relaxed">{item.message}</p>
+                        <div className="flex items-center justify-between mt-2 text-[10px] text-[#A89C94]">
+                          <span className="flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            {item.sentAt ? item.sentAt.substring(0, 10) : 'Active'}
                           </span>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleNotificationSeen(item.id);
-                            }}
-                            className="p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                            title={lang === 'mr' ? 'पाहिले - डिलीट करा' : 'Seen & Delete'}
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </button>
+                          <span className={`${isGrievance ? 'text-[#EA580C]' : 'text-emerald-700'} font-bold flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity`}>
+                            <Check className="w-3 h-3" />
+                            {lang === 'mr' ? 'तक्रार पाहण्यासाठी क्लिक करा' : 'Click to view grievance'}
+                          </span>
                         </div>
                       </div>
-                      <p className="text-xs text-[#7A6F68] mt-1 line-clamp-2 leading-relaxed">{item.message}</p>
-                      <div className="flex items-center justify-between mt-2 text-[10px] text-[#A89C94]">
-                        <span className="flex items-center gap-1">
-                          <Clock className="w-3 h-3" />
-                          {item.sentAt ? item.sentAt.substring(0, 10) : 'Active'}
-                        </span>
-                        <span className="text-emerald-700 font-bold flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <Check className="w-3 h-3" />
-                          {lang === 'mr' ? 'क्लिक केल्यावर डिलीट होईल' : 'Auto-deletes on click'}
-                        </span>
-                      </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
 
@@ -434,6 +500,18 @@ export function Header({ onToggleSidebar }: { onToggleSidebar?: () => void }) {
           )}
         </div>
       </div>
+
     </header>
+
+      {/* Add Custom Category Modal */}
+      <AddCategoryModal
+        isOpen={isAddCategoryOpen}
+        onClose={() => setIsAddCategoryOpen(false)}
+        onCategoryAdded={(cat) => {
+          setIsAddCategoryOpen(false);
+          router.push(`/admin/media?category=${encodeURIComponent(cat.nameEnglish)}`);
+        }}
+      />
+    </>
   );
 }

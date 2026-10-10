@@ -168,7 +168,7 @@ export function BunnyUploader({
         onUploadComplete({
           urlOrGuid: data.guid,
           duration: 5400,
-          thumbnail: `https://vz-1192802e-f33.b-cdn.net/${data.guid}/thumbnail.jpg`,
+          thumbnail: `https://vz-92cc7e0f-cd7.b-cdn.net/${data.guid}/thumbnail.jpg`,
           resolution: '4K UHD HDR',
         });
         setEncodingStage('ready');
@@ -349,7 +349,7 @@ export function BunnyUploader({
         onUploadComplete({
           urlOrGuid: finalGuid,
           duration: estimatedDuration,
-          thumbnail: `https://vz-1192802e-f33.b-cdn.net/${finalGuid}/thumbnail.jpg`,
+          thumbnail: `https://vz-92cc7e0f-cd7.b-cdn.net/${finalGuid}/thumbnail.jpg`,
           resolution: '4K UHD HDR',
         });
       } catch (err: any) {
@@ -396,9 +396,16 @@ export function BunnyUploader({
     }
   };
 
-  const handleManualSave = () => {
+  const handleManualSave = async () => {
     if (!manualInput.trim()) return;
     const trimmed = manualInput.trim();
+
+    // If it's an external HTTP/HTTPS video URL, automatically import & register in Bunny Stream!
+    if (type === 'video' && (trimmed.startsWith('http://') || trimmed.startsWith('https://')) && !trimmed.includes('b-cdn.net') && !trimmed.includes('mediadelivery.net')) {
+      await handleImportToBunny();
+      return;
+    }
+
     let finalVal = trimmed;
     try {
       const resolved = bunnyService.resolvePlaybackUrls(trimmed);
@@ -413,6 +420,7 @@ export function BunnyUploader({
     onUploadComplete({
       urlOrGuid: finalVal,
       duration: type === 'video' ? 5400 : undefined,
+      thumbnail: `https://vz-92cc7e0f-cd7.b-cdn.net/${finalVal}/thumbnail.jpg`,
       resolution: '4K UHD HDR',
     });
     setEncodingStage('ready');
@@ -594,7 +602,7 @@ export function BunnyUploader({
                 ) : type === 'video' ? (
                   <div className="relative w-32 h-18 aspect-video rounded-xl overflow-hidden border-2 border-white shadow-soft bg-black shrink-0">
                     <img
-                      src={`https://vz-1192802e-f33.b-cdn.net/${currentValue}/thumbnail.jpg`}
+                      src={`https://vz-92cc7e0f-cd7.b-cdn.net/${currentValue}/thumbnail.jpg`}
                       alt="Bunny Stream Thumbnail"
                       onError={(e) => {
                         (e.target as HTMLElement).style.display = 'none';
@@ -700,7 +708,7 @@ export function BunnyUploader({
                     {bunnyVideos.length} व्हिडिओ
                   </Badge>
                   <span className="text-[11px] font-mono text-[#A89C94] hidden md:inline">
-                    vz-1192802e-f33.b-cdn.net
+                    vz-92cc7e0f-cd7.b-cdn.net
                   </span>
                 </div>
 

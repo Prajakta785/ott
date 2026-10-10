@@ -29,8 +29,9 @@ export type ContentType =
   | 'podcast'
   | 'audio'
   | 'elearning'
-  | 'govt_program';
-export type ContentStatus = 'draft' | 'published' | 'archived';
+  | 'govt_program'
+  | 'video';
+export type ContentStatus = 'draft' | 'published' | 'archived' | 'deleted';
 
 export interface ContentItem {
   id: string;
@@ -106,7 +107,7 @@ export interface NotificationItem {
   id: string;
   title: string;
   message: string;
-  category: 'breaking_news' | 'live_event' | 'new_movie' | 'new_episode' | 'special_program';
+  category: 'breaking_news' | 'live_event' | 'new_movie' | 'new_episode' | 'special_program' | 'grievance' | string;
   targetType: 'all' | 'district' | 'plan';
   targetValue?: string;
   deepLinkUrl?: string;
@@ -123,6 +124,11 @@ export interface ContentCategory {
   nameHindi?: string;
   type: ContentType;
   subCategories: string[];
+  badgeText?: string;
+  badgeColor?: string;
+  iconName?: string;
+  slug?: string;
+  order?: number;
 }
 
 export interface LiveChannel {

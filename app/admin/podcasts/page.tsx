@@ -31,6 +31,7 @@ import { Modal } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { BunnyUploader } from '@/components/bunny-uploader';
 import { AudioPlayer } from '@/components/audio-player';
+import { ConnectAudioModal } from '@/components/connect-audio-modal';
 import { firestoreService } from '@/lib/firestore-service';
 import { ContentItem } from '@/lib/types';
 import { formatDuration, formatViews, slugify, formatDate } from '@/lib/utils';
@@ -47,6 +48,11 @@ export default function PodcastsPage() {
 
   // Audio Preview Player
   const [previewPodcast, setPreviewPodcast] = useState<ContentItem | null>(null);
+  const [podcastForAudio, setPodcastForAudio] = useState<ContentItem | null>(null);
+
+  const handlePodcastAudioUpdated = (updated: ContentItem) => {
+    setPodcasts(prev => prev.map(p => p.id === updated.id ? updated : p));
+  };
 
   // Search & Filters
   const [searchTerm, setSearchTerm] = useState('');
@@ -197,6 +203,15 @@ export default function PodcastsPage() {
     setIsEditing(false);
     setIsModalOpen(true);
   };
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('action') === 'create') {
+        handleOpenCreate();
+      }
+    }
+  }, []);
 
   const handleOpenEdit = (item: ContentItem) => {
     setCurrentPodcast({
@@ -580,6 +595,15 @@ export default function PodcastsPage() {
                     <div className="flex items-center gap-1">
                       {canEdit && (
                         <button
+                          onClick={() => setPodcastForAudio(podcast)}
+                          className="p-1.5 rounded-full text-[#7A6F68] hover:text-[#BE123C] hover:bg-rose-50 transition-colors cursor-pointer"
+                          title={lang === 'mr' ? 'ऑडिओ जोडा / बदला' : 'Connect Audio'}
+                        >
+                          <Headphones className="w-4 h-4" />
+                        </button>
+                      )}
+                      {canEdit && (
+                        <button
                           onClick={() => handleOpenEdit(podcast)}
                           className="p-1.5 rounded-full text-[#7A6F68] hover:text-[#2D2522] hover:bg-[#F5EFE6] transition-colors cursor-pointer"
                           title="Edit Podcast"
@@ -673,6 +697,15 @@ export default function PodcastsPage() {
                         <Play className="w-3.5 h-3.5 fill-current" />
                         {lang === 'mr' ? 'ऐका' : 'Play'}
                       </Button>
+                      {canEdit && (
+                        <button
+                          onClick={() => setPodcastForAudio(podcast)}
+                          className="p-1.5 rounded-lg text-slate-500 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                          title={lang === 'mr' ? 'ऑडिओ जोडा / बदला' : 'Connect Audio'}
+                        >
+                          <Headphones className="w-4 h-4" />
+                        </button>
+                      )}
                       {canEdit && (
                         <button
                           onClick={() => handleOpenEdit(podcast)}
@@ -828,7 +861,7 @@ export default function PodcastsPage() {
                     required
                     value={currentPodcast.audioUrl || ''}
                     onChange={(e) => handleAudioUrlChange(e.target.value)}
-                    placeholder="https://vz-1192802e-f33.b-cdn.net/podcasts/episode_01.mp3"
+                    placeholder="https://vz-92cc7e0f-cd7.b-cdn.net/podcasts/episode_01.mp3"
                     className={`w-full bg-white border rounded-2xl px-4 py-2.5 text-xs font-mono text-[#2D2522] focus:outline-none transition-colors ${
                       audioUrlError 
                         ? 'border-rose-400 focus:border-rose-500' 
@@ -890,7 +923,7 @@ export default function PodcastsPage() {
               )}
 
               <p className="text-[10px] text-[#7A6F68]">
-                Supports Bunny Storage direct CDN URLs (e.g. <code>https://storage.bunnycdn.com/graminbharat/...</code> or <code>https://vz-1192802e-f33.b-cdn.net/...</code>) and all standard MP3, AAC, M4A or HLS audio streams.
+                Supports Bunny Storage direct CDN URLs (e.g. <code>https://storage.bunnycdn.com/graminbharat/...</code> or <code>https://vz-92cc7e0f-cd7.b-cdn.net/...</code>) and all standard MP3, AAC, M4A or HLS audio streams.
               </p>
             </div>
           </div>
@@ -916,7 +949,7 @@ export default function PodcastsPage() {
                   type="url"
                   value={currentPodcast.poster || ''}
                   onChange={(e) => setCurrentPodcast(prev => ({ ...prev, poster: e.target.value, banner: e.target.value }))}
-                  placeholder="https://vz-1192802e-f33.b-cdn.net/podcasts/cover.jpg"
+                  placeholder="https://vz-92cc7e0f-cd7.b-cdn.net/podcasts/cover.jpg"
                   className="w-full bg-[#FAF7F2] border border-[#E5DBCA] rounded-2xl px-4 py-2 text-xs font-mono text-[#2D2522] focus:outline-none focus:border-purple-500 focus:bg-white"
                 />
 
@@ -1074,6 +1107,16 @@ export default function PodcastsPage() {
           category={(previewPodcast.genres && previewPodcast.genres[0]) || 'Podcast'}
           onClose={() => setPreviewPodcast(null)}
           autoPlay={true}
+        />
+      )}
+
+      {/* Connect Audio Modal */}
+      {podcastForAudio && (
+        <ConnectAudioModal
+          isOpen={!!podcastForAudio}
+          onClose={() => setPodcastForAudio(null)}
+          item={podcastForAudio}
+          onAudioUpdated={handlePodcastAudioUpdated}
         />
       )}
     </div>

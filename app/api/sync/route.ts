@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { readServerStore, writeServerStore, saveServerContent } from '@/lib/server-store';
-import { syncDocToFirestore } from '@/lib/firestore-admin-sync';
+import { syncDocToFirestore, getDeletedContentIds } from '@/lib/firestore-admin-sync';
 import { ContentItem } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
@@ -8,11 +8,14 @@ export const dynamic = 'force-dynamic';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
+    const deletedIds = await getDeletedContentIds();
     const clientItems: ContentItem[] = body.content || [];
 
     if (Array.isArray(clientItems) && clientItems.length > 0) {
       for (const item of clientItems) {
         if (item && item.title) {
+          if (item.id && deletedIds.includes(item.id)) continue;
+
           const toSave = {
             ...item,
             status: item.status || 'published',
@@ -35,11 +38,12 @@ export async function POST(req: NextRequest) {
     }
 
     const updated = readServerStore();
+    const filteredContent = (updated.content || []).filter(c => !deletedIds.includes(c.id));
     return NextResponse.json({
       success: true,
       message: 'Client catalog successfully synced with server and Android app',
-      contentCount: updated.content.length,
-      data: updated.content,
+      contentCount: filteredContent.length,
+      data: filteredContent,
     }, {
       headers: {
         'Access-Control-Allow-Origin': '*',
@@ -55,10 +59,14 @@ export async function POST(req: NextRequest) {
 
 export async function GET() {
   const store = readServerStore();
+  const deletedIds = await getDeletedContentIds();
+  const content = (store.content || []).filter(c => !deletedIds.includes(c.id));
+  const liveChannels = (store.liveChannels || []).filter(c => !deletedIds.includes(c.id));
+
   return NextResponse.json({
     success: true,
-    content: store.content,
-    liveChannels: store.liveChannels,
+    content,
+    liveChannels,
     companyInfo: store.companyInfo,
   }, {
     headers: {

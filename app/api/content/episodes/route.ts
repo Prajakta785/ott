@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerEpisodes, saveServerEpisode, deleteServerEpisode } from '@/lib/server-store';
-import { syncDocToFirestore, deleteDocFromFirestore, fetchDocsFromFirestore } from '@/lib/firestore-admin-sync';
+import { syncDocToFirestore, deleteDocFromFirestore, fetchDocsFromFirestore, recordDeletedContentInFirestore, getDeletedContentIds } from '@/lib/firestore-admin-sync';
 import { bunnyService } from '@/lib/bunny-service';
 import { Episode } from '@/lib/types';
 
@@ -25,6 +25,11 @@ export async function GET(req: NextRequest) {
       } catch (err: any) {
         console.warn('Error fetching episodes from Firestore:', err?.message);
       }
+    }
+
+    const deletedIds = await getDeletedContentIds();
+    if (deletedIds && deletedIds.length > 0) {
+      episodes = episodes.filter(e => !deletedIds.includes(e.id));
     }
 
     return NextResponse.json({
@@ -136,26 +141,55 @@ export async function DELETE(req: NextRequest) {
     const seriesId = searchParams.get('seriesId') || searchParams.get('contentId');
     const seasonId = searchParams.get('seasonId');
     const episodeId = searchParams.get('id') || searchParams.get('episodeId');
+    const providedVideoId = searchParams.get('videoId');
 
     if (!seriesId || !seasonId || !episodeId) {
       return NextResponse.json({ success: false, error: 'seriesId, seasonId and episodeId are required' }, { status: 400 });
     }
 
+    // 1. Retrieve the episode to get its videoId
+    const episodes = getServerEpisodes(seriesId, seasonId);
+    const targetEp = episodes.find(e => e.id === episodeId);
+    const videoIdToDelete = providedVideoId || targetEp?.videoId;
+
+    // 2. Delete video from Bunny Stream
+    if (videoIdToDelete) {
+      try {
+        await bunnyService.deleteVideo(videoIdToDelete);
+      } catch (e) {
+        console.warn('Bunny episode video delete notice:', e);
+      }
+    }
+
+    // 3. Delete from server store
     deleteServerEpisode(episodeId);
 
-    // Delete from Cloud Firestore subcollection
+    // 4. Delete from Cloud Firestore subcollection
     const path = `content/${encodeURIComponent(seriesId)}/seasons/${encodeURIComponent(seasonId)}/episodes`;
     await deleteDocFromFirestore(path, episodeId);
 
+    // 5. Track in Cloud Firestore users/app_deleted_content
+    await recordDeletedContentInFirestore(episodeId, {
+      id: episodeId,
+      seriesId,
+      seasonId,
+      videoId: videoIdToDelete || '',
+      type: 'episode',
+      deletedAt: new Date().toISOString(),
+    });
+
     return NextResponse.json({
       success: true,
-      message: 'Episode deleted from server and Firestore'
+      message: 'Episode successfully deleted from Bunny.net, server store, and Firestore',
+      deletedId: episodeId,
+      bunnyVideoDeleted: !!videoIdToDelete,
     }, {
       headers: {
         'Access-Control-Allow-Origin': '*',
       }
     });
   } catch (err: any) {
+    console.error('API /api/content/episodes DELETE error:', err);
     return NextResponse.json({
       success: false,
       error: err?.message || 'Failed to delete episode'

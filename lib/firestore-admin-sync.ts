@@ -241,3 +241,135 @@ export async function fetchDocsFromFirestore(collectionOrPath: string): Promise<
     return [];
   }
 }
+
+import { recordServerDeletedId, getServerDeletedIds } from './server-store';
+
+/**
+ * Record deleted content ID in Cloud Firestore under 'users/app_deleted_content'
+ * This collection is accessible to mobile app and web clients so they
+ * immediately purge deleted content from feeds, search, continue watching, and caches.
+ */
+export async function recordDeletedContentInFirestore(id: string, metadata?: any): Promise<boolean> {
+  if (!id) return false;
+
+  // 1. Instantly record into local server-store.json so it is immediately tracked on server
+  try {
+    recordServerDeletedId(id);
+  } catch (err) {
+    console.warn('recordServerDeletedId notice:', err);
+  }
+
+  // 2. Sync to Cloud Firestore 'users/app_deleted_content' for Flutter mobile app
+  try {
+    const token = await getAdminIdToken();
+    const docUrl = buildDocUrl('users', 'app_deleted_content');
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    let currentDeletedIds: string[] = [];
+    try {
+      const getRes = await httpRequest(docUrl, { method: 'GET', headers });
+      if (getRes.status === 200 && getRes.data?.fields) {
+        const parsed = fromFirestoreFields(getRes.data.fields);
+        if (Array.isArray(parsed.deletedIds)) {
+          currentDeletedIds = parsed.deletedIds;
+        }
+      }
+    } catch {}
+
+    // Include any deleted IDs already recorded locally
+    const localDeleted = getServerDeletedIds();
+    for (const lid of localDeleted) {
+      if (!currentDeletedIds.includes(lid)) {
+        currentDeletedIds.push(lid);
+      }
+    }
+
+    if (!currentDeletedIds.includes(id)) {
+      currentDeletedIds.push(id);
+    }
+
+    if (currentDeletedIds.length > 2000) {
+      currentDeletedIds = currentDeletedIds.slice(currentDeletedIds.length - 2000);
+    }
+
+    const payload = {
+      deletedIds: currentDeletedIds,
+      lastDeletedId: id,
+      lastDeletedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      ...(metadata ? { [`item_${id.replace(/[^a-zA-Z0-9_]/g, '_')}`]: metadata } : {}),
+    };
+
+    return await syncDocToFirestore('users', 'app_deleted_content', payload);
+  } catch (err: any) {
+    console.warn('recordDeletedContentInFirestore notice:', err?.message);
+    return false;
+  }
+}
+
+/**
+ * Fetch all registered deleted IDs from Cloud Firestore and local server store
+ */
+export async function getDeletedContentIds(): Promise<string[]> {
+  const mergedSet = new Set<string>();
+
+  // 1. Read from local server store
+  try {
+    const local = getServerDeletedIds();
+    local.forEach(id => mergedSet.add(id));
+  } catch {}
+
+  // 2. Read from Cloud Firestore
+  try {
+    const token = await getAdminIdToken();
+    const docUrl = buildDocUrl('users', 'app_deleted_content');
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const res = await httpRequest(docUrl, { method: 'GET', headers });
+    if (res.status === 200 && res.data?.fields) {
+      const parsed = fromFirestoreFields(res.data.fields);
+      if (Array.isArray(parsed.deletedIds)) {
+        parsed.deletedIds.forEach((id: string) => mergedSet.add(id));
+      }
+    }
+  } catch (err: any) {
+    console.warn('getDeletedContentIds notice:', err?.message);
+  }
+
+  return Array.from(mergedSet);
+}
+
+/**
+ * Remove an ID from Cloud Firestore 'users/app_deleted_content' and local server store if re-created
+ */
+export async function removeDeletedContentFromFirestore(id: string): Promise<boolean> {
+  if (!id) return false;
+  try {
+    const token = await getAdminIdToken();
+    const docUrl = buildDocUrl('users', 'app_deleted_content');
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const res = await httpRequest(docUrl, { method: 'GET', headers });
+    if (res.status === 200 && res.data?.fields) {
+      const parsed = fromFirestoreFields(res.data.fields);
+      if (Array.isArray(parsed.deletedIds) && parsed.deletedIds.includes(id)) {
+        const filtered = parsed.deletedIds.filter((d: string) => d !== id);
+        const payload = {
+          ...parsed,
+          deletedIds: filtered,
+          updatedAt: new Date().toISOString(),
+        };
+        return await syncDocToFirestore('users', 'app_deleted_content', payload);
+      }
+    }
+    return true;
+  } catch (err: any) {
+    console.warn('removeDeletedContentFromFirestore notice:', err?.message);
+    return false;
+  }
+}
+
+

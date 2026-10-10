@@ -13,7 +13,8 @@ import {
   Sparkles,
   Heart,
   Play,
-  X
+  X,
+  Headphones
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -21,6 +22,7 @@ import { Modal } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { BunnyUploader } from '@/components/bunny-uploader';
 import { VideoPlayer } from '@/components/video-player';
+import { ConnectAudioModal } from '@/components/connect-audio-modal';
 import { firestoreService } from '@/lib/firestore-service';
 import { ContentItem } from '@/lib/types';
 import { formatDuration, formatViews, slugify } from '@/lib/utils';
@@ -36,6 +38,11 @@ export default function MoviesPage() {
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
   const [previewMovie, setPreviewMovie] = useState<ContentItem | null>(null);
+  const [movieForAudio, setMovieForAudio] = useState<ContentItem | null>(null);
+
+  const handleMovieAudioUpdated = (updated: ContentItem) => {
+    setMovies(prev => prev.map(m => m.id === updated.id ? updated : m));
+  };
 
   // Search & Filter
   const [searchTerm, setSearchTerm] = useState('');
@@ -56,13 +63,15 @@ export default function MoviesPage() {
   const [genreInput, setGenreInput] = useState('');
 
   const genresList = [
+    'Namdar Maharashtra',
+    'Gramin Bharat TV',
+    'Entertainment',
     'मराठी चित्रपट (Marathi Movies)', 
     'हिंदी चित्रपट (Hindi Movies)', 
     'Short Films (लघुपट)', 
     'ग्रामीण कथा (Rural Stories)', 
     'सामाजिक चित्रपट (Social Films)', 
     'कॉमेडी (Comedy)', 
-    'मनोरंजन कार्यक्रम (Entertainment)', 
     'ऐतिहासिक (Historical / Drama)', 
     'कलाकारांच्या मुलाखती (Interviews)'
   ];
@@ -134,6 +143,15 @@ export default function MoviesPage() {
     setIsEditing(false);
     setIsModalOpen(true);
   };
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('action') === 'create') {
+        handleOpenCreate();
+      }
+    }
+  }, []);
 
   const handleOpenEdit = (movie: ContentItem) => {
     setCurrentMovie({ ...movie });
@@ -372,6 +390,14 @@ export default function MoviesPage() {
                     {movie.videoId || 'No Bunny GUID'}
                   </div>
                   <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setMovieForAudio(movie)}
+                      className="p-1.5 rounded-full text-[#7A6F68] hover:text-[#EA580C] hover:bg-orange-50 transition cursor-pointer"
+                      title={lang === 'mr' ? 'ऑडिओ कनेक्ट करा' : 'Connect Audio'}
+                    >
+                      <Headphones className="w-4 h-4" />
+                    </button>
                     {canEdit && (
                       <button
                         onClick={() => handleOpenEdit(movie)}
@@ -449,6 +475,14 @@ export default function MoviesPage() {
                   </td>
                   <td className="py-3 text-right">
                     <div className="flex items-center justify-end gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setMovieForAudio(movie)}
+                        title={lang === 'mr' ? 'ऑडिओ कनेक्ट करा' : 'Connect Audio'}
+                        className="p-1.5 rounded-full text-[#7A6F68] hover:text-[#EA580C] hover:bg-orange-50 transition cursor-pointer"
+                      >
+                        <Headphones className="w-4 h-4" />
+                      </button>
                       <button
                         onClick={() => setPreviewMovie(movie)}
                         title="Preview Play Video"
@@ -730,7 +764,7 @@ export default function MoviesPage() {
               type="url"
               value={currentMovie.subtitleUrl || ''}
               onChange={(e) => setCurrentMovie({ ...currentMovie, subtitleUrl: e.target.value })}
-              placeholder="https://vz-1192802e-f33.b-cdn.net/subtitles/movie_marathi.vtt"
+              placeholder="https://vz-92cc7e0f-cd7.b-cdn.net/subtitles/movie_marathi.vtt"
               className="w-full bg-[#FAF7F2] border border-[#E5DBCA] rounded-2xl px-4 py-2.5 text-sm text-[#2D2522] focus:outline-none focus:border-[#F472B6] focus:bg-white font-mono text-xs"
             />
           </div>
@@ -885,12 +919,22 @@ export default function MoviesPage() {
             </div>
             <VideoPlayer
               src={previewMovie.videoId || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4'}
+              audioSrc={previewMovie.audioUrl || previewMovie.audioTrackUrl}
               poster={previewMovie.poster || previewMovie.banner}
+              title={previewMovie.title}
               autoPlay={true}
             />
           </div>
         </div>
       )}
+
+      {/* Connect Audio Modal */}
+      <ConnectAudioModal
+        isOpen={!!movieForAudio}
+        onClose={() => setMovieForAudio(null)}
+        item={movieForAudio}
+        onAudioUpdated={handleMovieAudioUpdated}
+      />
     </div>
   );
 }

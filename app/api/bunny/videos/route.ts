@@ -70,12 +70,49 @@ export async function POST(req: NextRequest) {
   }
 }
 
+export async function DELETE(req: NextRequest) {
+  try {
+    const { searchParams } = new URL(req.url);
+    let targetGuid = searchParams.get('guid') || searchParams.get('videoId') || searchParams.get('id');
+
+    if (!targetGuid) {
+      try {
+        const body = await req.json();
+        targetGuid = body.guid || body.videoId || body.id;
+      } catch {}
+    }
+
+    if (!targetGuid) {
+      return NextResponse.json({ success: false, error: 'guid or videoId is required' }, { status: 400 });
+    }
+
+    const result = await bunnyService.deleteVideo(targetGuid);
+    return NextResponse.json({
+      success: result.success,
+      message: result.message,
+      statusCode: result.statusCode,
+    }, {
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      }
+    });
+  } catch (err: any) {
+    console.error('API /api/bunny/videos DELETE error:', err);
+    return NextResponse.json({
+      success: false,
+      error: err?.message || 'Failed to delete video from Bunny.net'
+    }, { status: 500 });
+  }
+}
+
 export async function OPTIONS() {
   return new NextResponse(null, {
     status: 200,
     headers: {
       'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     },
   });

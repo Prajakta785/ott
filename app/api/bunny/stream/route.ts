@@ -62,8 +62,19 @@ export async function GET(req: NextRequest) {
         responseHeaders.set('Accept-Ranges', 'bytes');
         responseHeaders.set('Cache-Control', 'public, max-age=3600');
 
-        const ct = bunnyRes.headers['content-type'] || (cleanPath.endsWith('.mp4') ? 'video/mp4' : 'application/octet-stream');
-        responseHeaders.set('Content-Type', Array.isArray(ct) ? ct[0] : ct);
+        let contentType = Array.isArray(bunnyRes.headers['content-type']) 
+          ? bunnyRes.headers['content-type'][0] 
+          : bunnyRes.headers['content-type'];
+        if (!contentType || contentType === 'application/octet-stream') {
+          if (cleanPath.endsWith('.mp4')) contentType = 'video/mp4';
+          else if (cleanPath.endsWith('.wav')) contentType = 'audio/wav';
+          else if (cleanPath.endsWith('.mp3')) contentType = 'audio/mpeg';
+          else if (cleanPath.endsWith('.m4a')) contentType = 'audio/mp4';
+          else if (cleanPath.endsWith('.aac')) contentType = 'audio/aac';
+          else if (cleanPath.endsWith('.ogg')) contentType = 'audio/ogg';
+          else contentType = 'application/octet-stream';
+        }
+        responseHeaders.set('Content-Type', contentType);
 
         if (bunnyRes.headers['content-length']) {
           responseHeaders.set('Content-Length', String(bunnyRes.headers['content-length']));

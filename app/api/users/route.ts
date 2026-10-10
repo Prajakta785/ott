@@ -7,7 +7,8 @@ export const dynamic = 'force-dynamic';
 function normalizeFirestoreUser(doc: any): User | null {
   if (!doc) return null;
   // Exclude only dummy mock templates
-  if (doc.id === 'usr-003' || doc.name === 'Liam Gallagher' || String(doc.phone || '').includes('7700 900123')) {
+  const idStr = String(doc.id || '');
+  if (idStr.startsWith('app_') || idStr.startsWith('perm_') || idStr.startsWith('user_admin') || doc.id === 'usr-003' || doc.name === 'Liam Gallagher' || String(doc.phone || '').includes('7700 900123')) {
     return null;
   }
 
@@ -27,34 +28,33 @@ function normalizeFirestoreUser(doc: any): User | null {
 
   // Determine session liveness & logout state
   const lastLoginTime = doc.lastLogin || (Array.isArray(doc.devices) && doc.devices.length > 0 ? doc.devices[0].lastLogin : null) || doc.loginTime || doc.createdAt || null;
-  const loginTimestamp = lastLoginTime ? new Date(lastLoginTime).getTime() : 0;
-  const now = Date.now();
-  const hoursSinceLogin = loginTimestamp > 0 ? (now - loginTimestamp) / (1000 * 60 * 60) : 999;
+  const lastLogoutTime = doc.lastLogout || null;
 
-  // Explicit logout checks or expired sessions (> 12 hours)
-  const isExplicitlyLoggedOut = doc.sessionStatus === 'logged_out' || doc.isLoggedIn === false;
-  const isSessionExpired = hoursSinceLogin > 12;
-  const isCurrentlyActive = !isExplicitlyLoggedOut && !isSessionExpired && (loginTimestamp > 0);
+  const loginMs = lastLoginTime ? new Date(lastLoginTime).getTime() : 0;
+  const logoutMs = lastLogoutTime ? new Date(lastLogoutTime).getTime() : 0;
+  const isLoggedOutByTimestamp = logoutMs > 0 && loginMs > 0 && logoutMs >= loginMs;
+
+  // Strict check: only explicitly active sessions are considered active
+  const isExplicitlyLoggedOut = doc.sessionStatus === 'logged_out' || doc.isLoggedIn === false || isLoggedOutByTimestamp;
+  const isCurrentlyActive = (doc.sessionStatus === 'active' || doc.isLoggedIn === true) && !isExplicitlyLoggedOut;
 
   const sessionStatus: 'active' | 'logged_out' = isCurrentlyActive ? 'active' : 'logged_out';
   const isLoggedIn = isCurrentlyActive;
 
   // Active devices: only keep if user is currently active
   let devices: any[] = [];
-  if (isCurrentlyActive) {
-    if (Array.isArray(doc.devices) && doc.devices.length > 0) {
-      devices = doc.devices;
-    } else {
-      devices = [
-        {
-          deviceId: `android_${tenDigit || doc.id || 'dev'}`,
-          platform: 'android',
-          deviceName: 'Android Mobile App',
-          lastLogin: lastLoginTime || new Date().toISOString(),
-          isLoggedIn: true,
-        }
-      ];
-    }
+  if (isCurrentlyActive && Array.isArray(doc.devices) && doc.devices.length > 0) {
+    devices = doc.devices;
+  } else if (isCurrentlyActive) {
+    devices = [
+      {
+        deviceId: `android_${tenDigit || doc.id}`,
+        platform: 'android',
+        deviceName: 'Android Mobile App',
+        lastLogin: lastLoginTime || new Date().toISOString(),
+        isLoggedIn: true,
+      }
+    ];
   }
 
   // Logout timestamp: if logged out, ensure we have a valid logout timestamp
@@ -74,10 +74,10 @@ function normalizeFirestoreUser(doc: any): User | null {
     district: doc.district || '',
     taluka: doc.taluka || '',
     createdAt: doc.createdAt || doc.created_at || new Date().toISOString(),
-    subscriptionStatus: doc.subscriptionStatus || doc.status || 'active',
-    planId: doc.planId || 'vip-annual',
-    planName: doc.planName || (doc.subscriptionStatus === 'active' ? 'VIP Annual Pass' : 'Standard Access'),
-    planExpiry: doc.planExpiry || doc.expiryDate || '2027-12-31T23:59:59Z',
+    subscriptionStatus: doc.subscriptionStatus || doc.status || 'free',
+    planId: doc.planId || 'free',
+    planName: doc.planName || (doc.subscriptionStatus === 'active' ? 'VIP Annual Pass' : 'Free User'),
+    planExpiry: doc.planExpiry || doc.expiryDate || null,
     devices: devices,
     watchlist: Array.isArray(doc.watchlist) ? doc.watchlist : [],
     continueWatching: doc.continueWatching && typeof doc.continueWatching === 'object' ? doc.continueWatching : {},
@@ -143,14 +143,74 @@ export async function GET() {
       }
     }
 
-    const users = Array.from(userMap.values());
+    const rawList = Array.from(userMap.values());
 
     // Sort newest activity / registration first
-    users.sort((a, b) => {
+    rawList.sort((a, b) => {
       const timeA = new Date(a.lastLogin || a.createdAt || 0).getTime();
       const timeB = new Date(b.lastLogin || b.createdAt || 0).getTime();
       return timeB - timeA;
     });
+
+    // SINGLE ACTIVE USER POLICY: Whichever phone number logged in most recently and is active,
+    // ONLY that number is shown as Active. All other numbers are strictly shown as Logged Out.
+    const activeCandidates = rawList.filter(u => u.isLoggedIn && u.sessionStatus === 'active');
+    const singleActiveUser = activeCandidates.length > 0 ? activeCandidates[0] : null;
+
+    const users = rawList.map(u => {
+      const uDigits = u.phone.replace(/\D/g, '').slice(-10);
+      const activeDigits = singleActiveUser ? singleActiveUser.phone.replace(/\D/g, '').slice(-10) : '';
+      const isTargetActive = singleActiveUser && (u.id === singleActiveUser.id || (uDigits && uDigits === activeDigits));
+
+      if (isTargetActive) {
+        return {
+          ...u,
+          isLoggedIn: true,
+          sessionStatus: 'active' as const,
+          devices: (u.devices && u.devices.length > 0) ? u.devices : [
+            {
+              deviceId: `android_${uDigits || u.id}`,
+              platform: 'android',
+              deviceName: 'Android Mobile App',
+              lastLogin: u.lastLogin || new Date().toISOString(),
+              isLoggedIn: true,
+            }
+          ],
+          lastLogout: undefined,
+        };
+      } else {
+        return {
+          ...u,
+          isLoggedIn: false,
+          sessionStatus: 'logged_out' as const,
+          devices: [],
+          lastLogout: u.lastLogout || u.lastLogin || u.createdAt || new Date().toISOString(),
+        };
+      }
+    });
+
+    // Background sync to keep Firestore completely consistent with the single active user policy
+    if (singleActiveUser) {
+      (async () => {
+        for (const raw of rawUsers || []) {
+          const docId = String(raw.id || '');
+          if (docId !== singleActiveUser.id &&
+              !docId.startsWith('app_') &&
+              !docId.startsWith('perm_') &&
+              !docId.startsWith('user_admin')) {
+            if (raw.isLoggedIn === true || raw.sessionStatus === 'active') {
+              syncDocToFirestore('users', docId, {
+                ...raw,
+                isLoggedIn: false,
+                sessionStatus: 'logged_out',
+                devices: [],
+                lastLogout: new Date().toISOString(),
+              }).catch(() => {});
+            }
+          }
+        }
+      })().catch(() => {});
+    }
 
     return NextResponse.json({
       success: true,
@@ -176,6 +236,7 @@ export async function POST(req: NextRequest) {
     }
 
     const userId = `user_${cleanPhone || body.id}`;
+    const nowIso = new Date().toISOString();
 
     // Handle LOGOUT action explicitly
     if (body.action === 'logout' || body.sessionStatus === 'logged_out') {
@@ -184,9 +245,9 @@ export async function POST(req: NextRequest) {
         phone: cleanPhone ? `+91 ${cleanPhone}` : (body.phone || ''),
         isLoggedIn: false,
         sessionStatus: 'logged_out',
-        lastLogout: new Date().toISOString(),
+        lastLogout: nowIso,
         devices: [],
-        updatedAt: new Date().toISOString(),
+        updatedAt: nowIso,
       };
       const synced = await syncDocToFirestore('users', userId, logoutPayload);
       return NextResponse.json({
@@ -198,8 +259,66 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Normal Login or Sync
-    const nowIso = new Date().toISOString();
+    // Handle ACTIVATE action explicitly (from Admin Panel "सक्रिय करा")
+    // Preserves existing name, email, subscription status, etc.
+    if (body.action === 'activate') {
+      const activatePayload: any = {
+        id: userId,
+        phone: cleanPhone ? `+91 ${cleanPhone}` : (body.phone || ''),
+        isLoggedIn: true,
+        sessionStatus: 'active',
+        lastLogin: nowIso,
+        loginTime: nowIso,
+        lastLogout: null,
+        devices: [
+          {
+            deviceId: `android_${cleanPhone || Date.now()}`,
+            platform: 'android',
+            deviceName: body.deviceName || 'Android Mobile App',
+            lastLogin: nowIso,
+            isLoggedIn: true,
+          }
+        ],
+        updatedAt: nowIso,
+      };
+      if (body.name) activatePayload.name = body.name;
+
+      const synced = await syncDocToFirestore('users', userId, activatePayload);
+
+      // SINGLE ACTIVE USER POLICY: Deactivate all other users in Cloud Firestore
+      try {
+        const allUsers = await fetchDocsFromFirestore('users');
+        for (const other of allUsers || []) {
+          const otherId = String(other.id || '');
+          if (otherId !== userId &&
+              !otherId.startsWith('app_') &&
+              !otherId.startsWith('perm_') &&
+              !otherId.startsWith('user_admin')) {
+            if (other.isLoggedIn === true || other.sessionStatus === 'active') {
+              await syncDocToFirestore('users', otherId, {
+                ...other,
+                isLoggedIn: false,
+                sessionStatus: 'logged_out',
+                devices: [],
+                lastLogout: nowIso,
+              }).catch(() => {});
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Deactivating other users notice:', e);
+      }
+
+      return NextResponse.json({
+        success: synced,
+        message: 'User activated successfully',
+        user: activatePayload,
+      }, {
+        headers: { 'Access-Control-Allow-Origin': '*' }
+      });
+    }
+
+    // Normal Login or Activation
     const userPayload: User = {
       id: userId,
       phone: cleanPhone ? `+91 ${cleanPhone}` : body.phone || '',
@@ -209,10 +328,10 @@ export async function POST(req: NextRequest) {
       district: body.district || '',
       taluka: body.taluka || '',
       createdAt: body.createdAt || nowIso,
-      subscriptionStatus: body.subscriptionStatus || 'active',
-      planId: body.planId || 'free-tier',
-      planName: body.planName || 'Standard Access',
-      planExpiry: body.planExpiry || '2026-12-31T23:59:59Z',
+      subscriptionStatus: body.subscriptionStatus || 'free',
+      planId: body.planId || 'free',
+      planName: body.planName || 'Free User',
+      planExpiry: body.planExpiry || null,
       devices: Array.isArray(body.devices) && body.devices.length > 0 ? body.devices : [
         {
           deviceId: `android_${cleanPhone || Date.now()}`,
@@ -231,6 +350,30 @@ export async function POST(req: NextRequest) {
     };
 
     const synced = await syncDocToFirestore('users', userId, userPayload);
+
+    // SINGLE ACTIVE USER POLICY: Deactivate all other users in Cloud Firestore
+    try {
+      const allUsers = await fetchDocsFromFirestore('users');
+      for (const other of allUsers || []) {
+        const otherId = String(other.id || '');
+        if (otherId !== userId &&
+            !otherId.startsWith('app_') &&
+            !otherId.startsWith('perm_') &&
+            !otherId.startsWith('user_admin')) {
+          if (other.isLoggedIn === true || other.sessionStatus === 'active') {
+            await syncDocToFirestore('users', otherId, {
+              ...other,
+              isLoggedIn: false,
+              sessionStatus: 'logged_out',
+              devices: [],
+              lastLogout: nowIso,
+            }).catch(() => {});
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Deactivating other users notice:', e);
+    }
 
     return NextResponse.json({
       success: synced,

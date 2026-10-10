@@ -181,6 +181,19 @@ export default function GrievancesPage() {
 
   useEffect(() => {
     loadData();
+
+    // Auto-poll grievances every 8 seconds so app submissions appear live
+    const interval = setInterval(loadData, 8000);
+
+    const handleGrievanceEvent = () => loadData();
+    window.addEventListener('ott_grievance_created', handleGrievanceEvent);
+    window.addEventListener('storage', handleGrievanceEvent);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('ott_grievance_created', handleGrievanceEvent);
+      window.removeEventListener('storage', handleGrievanceEvent);
+    };
   }, []);
 
   const handleStatusChange = async (id: string, status: 'pending' | 'verified' | 'published' | 'resolved') => {
@@ -247,20 +260,25 @@ export default function GrievancesPage() {
 
   const handlePublishAsNews = async (g: Grievance) => {
     setPublishingId(g.id);
+    const safeVillage = g.village || 'ग्रामीण';
+    const safeDistrict = g.district || 'महाराष्ट्र';
+    const safeTaluka = g.taluka || '';
+    const safeCitizen = g.citizenName || 'नागरिक';
+
     const newContent: ContentItem = {
       id: `news_grv_${Date.now()}`,
       type: 'news',
-      title: `[जनतेचा आवाज] ${g.title} (${g.village}, ${g.district})`,
-      slug: `news-${g.village.toLowerCase()}-${Date.now()}`,
-      description: `${g.description}\n\nगाव: ${g.village}, तालुका: ${g.taluka}, जिल्हा: ${g.district}\nनागरिक तक्रारदार: ${g.citizenName}`,
-      tags: ['जनतेचा आवाज', 'ग्रामीण समस्या', g.district, g.taluka],
-      genres: ['News', 'Public Grievance'],
-      cast: [g.citizenName],
+      title: `[जनतेचा आवाज] ${g.title || 'ग्रामीण समस्या'} (${safeVillage}, ${safeDistrict})`,
+      slug: `news-${Date.now()}`,
+      description: `${g.description || ''}\n\nगाव: ${safeVillage}, तालुका: ${safeTaluka}, जिल्हा: ${safeDistrict}\nनागरिक तक्रारदार: ${safeCitizen}`,
+      tags: ['जनतेचा आवाज', 'ग्रामीण समस्या', safeDistrict, safeTaluka, safeVillage].filter(Boolean) as string[],
+      genres: ['News', 'ग्रामीण समस्या'],
+      cast: [safeCitizen],
       director: 'ग्रामीण भारत टीव्ही विशेष चमू',
       language: ['Marathi'],
       releaseDate: new Date().toISOString(),
-      poster: g.mediaUrl || '',
-      banner: g.mediaUrl || '',
+      poster: g.mediaUrl || 'https://images.unsplash.com/photo-1590602847861-f357a9332bbc?w=800&auto=format&fit=crop&q=80',
+      banner: g.mediaUrl || 'https://images.unsplash.com/photo-1590602847861-f357a9332bbc?w=1200&auto=format&fit=crop&q=80',
       isPremium: false,
       isFeatured: true,
       status: 'published',
@@ -268,10 +286,10 @@ export default function GrievancesPage() {
       views: 0,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      reporterName: `नागरिक रिपोर्टर (${g.citizenName})`,
-      district: g.district,
-      taluka: g.taluka,
-      village: g.village,
+      reporterName: `नागरिक रिपोर्टर (${safeCitizen})`,
+      district: safeDistrict,
+      taluka: safeTaluka,
+      village: safeVillage,
       subCategory: 'ग्रामीण समस्या / जनतेचा आवाज',
       resolution: '1080p Full HD',
     };

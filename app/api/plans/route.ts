@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerPlans, saveServerPlan, deleteServerPlan, defaultAppPlans } from '@/lib/server-store';
-import { syncDocToFirestore, deleteDocFromFirestore, fetchDocsFromFirestore } from '@/lib/firestore-admin-sync';
+import { syncDocToFirestore, deleteDocFromFirestore, fetchDocsFromFirestore, recordDeletedContentInFirestore, getDeletedContentIds } from '@/lib/firestore-admin-sync';
 import { Plan } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
@@ -8,24 +8,35 @@ export const dynamic = 'force-dynamic';
 export async function GET(req: NextRequest) {
   try {
     let items = getServerPlans();
+    const deletedIds = await getDeletedContentIds();
 
     // If local store is empty, fetch from Cloud Firestore or default plans
     if (!items || items.length === 0) {
       try {
         const firestoreItems = await fetchDocsFromFirestore('plans');
         if (firestoreItems && firestoreItems.length > 0) {
-          firestoreItems.forEach(item => saveServerPlan(item as Plan));
+          firestoreItems.forEach(item => {
+            if (!deletedIds.includes(item.id)) {
+              saveServerPlan(item as Plan);
+            }
+          });
           items = getServerPlans();
         } else {
           defaultAppPlans.forEach(item => {
-            saveServerPlan(item);
-            syncDocToFirestore('plans', item.id, item).catch(() => {});
+            if (!deletedIds.includes(item.id)) {
+              saveServerPlan(item);
+              syncDocToFirestore('plans', item.id, item).catch(() => {});
+            }
           });
           items = getServerPlans();
         }
       } catch {
-        items = defaultAppPlans;
+        items = defaultAppPlans.filter(p => !deletedIds.includes(p.id));
       }
+    }
+
+    if (deletedIds && deletedIds.length > 0) {
+      items = items.filter(p => !deletedIds.includes(p.id));
     }
 
     return NextResponse.json({
@@ -43,8 +54,8 @@ export async function GET(req: NextRequest) {
   } catch (err: any) {
     return NextResponse.json({
       success: true,
-      count: defaultAppPlans.length,
-      data: defaultAppPlans,
+      count: 0,
+      data: [],
     });
   }
 }
@@ -68,7 +79,7 @@ export async function POST(req: NextRequest) {
     const saved = saveServerPlan(plan);
 
     // Sync in background to Cloud Firestore 'plans' collection for Flutter Mobile App & Web
-    syncDocToFirestore('plans', plan.id, {
+    await syncDocToFirestore('plans', plan.id, {
       id: plan.id,
       name: plan.name,
       price: plan.price,
@@ -109,14 +120,23 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'ID is required' }, { status: 400 });
     }
 
+    // 1. Delete from server store
     deleteServerPlan(id);
 
-    // Delete directly from Cloud Firestore
-    deleteDocFromFirestore('plans', id).catch(() => {});
+    // 2. Delete directly from Cloud Firestore
+    await deleteDocFromFirestore('plans', id).catch(() => {});
+
+    // 3. Record in Cloud Firestore users/app_deleted_content
+    await recordDeletedContentInFirestore(id, {
+      id,
+      type: 'plan',
+      deletedAt: new Date().toISOString(),
+    });
 
     return NextResponse.json({
       success: true,
-      message: 'Plan deleted from server and Cloud Firestore'
+      message: 'Plan deleted from server, Cloud Firestore, and Android App',
+      deletedId: id,
     }, {
       headers: {
         'Access-Control-Allow-Origin': '*',

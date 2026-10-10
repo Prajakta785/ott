@@ -9,7 +9,9 @@ import {
   CompanyInfo, 
   ContentCategory,
   Season,
-  Episode
+  Episode,
+  Grievance,
+  NotificationItem
 } from './types';
 import { 
   initialCompanyInfo, 
@@ -18,7 +20,10 @@ import {
   initialPlans, 
   initialBanners,
   initialSeasons,
-  initialEpisodes
+  initialEpisodes,
+  initialGrievances,
+  initialNotifications,
+  initialAds
 } from './mock-data';
 
 const DATA_DIR = path.join(process.cwd(), 'data');
@@ -34,6 +39,9 @@ export interface ServerStoreSchema {
   ads: Advertisement[];
   categories: ContentCategory[];
   companyInfo: CompanyInfo;
+  grievances: Grievance[];
+  notifications: NotificationItem[];
+  deletedIds?: string[];
   updatedAt: string;
 }
 
@@ -48,6 +56,9 @@ function getInitialStore(): ServerStoreSchema {
     ads: [],
     categories: initialCategories,
     companyInfo: initialCompanyInfo,
+    grievances: initialGrievances,
+    notifications: initialNotifications,
+    deletedIds: [],
     updatedAt: new Date().toISOString(),
   };
 }
@@ -77,6 +88,9 @@ export function readServerStore(): ServerStoreSchema {
         ...data,
         seasons: data.seasons || [],
         episodes: data.episodes || [],
+        grievances: data.grievances || initialGrievances,
+        notifications: data.notifications || initialNotifications,
+        deletedIds: Array.isArray(data.deletedIds) ? data.deletedIds : [],
       };
     }
   } catch (e) {
@@ -102,13 +116,36 @@ export function writeServerStore(data: Partial<ServerStoreSchema>): ServerStoreS
   }
 }
 
+/* ------------------- DELETED ITEMS REGISTRY ------------------- */
+export function getServerDeletedIds(): string[] {
+  const store = readServerStore();
+  return Array.isArray(store.deletedIds) ? store.deletedIds : [];
+}
+
+export function recordServerDeletedId(id: string): void {
+  if (!id) return;
+  const store = readServerStore();
+  const current = Array.isArray(store.deletedIds) ? store.deletedIds : [];
+  if (!current.includes(id)) {
+    writeServerStore({ deletedIds: [...current, id] });
+  }
+}
+
+export function isServerDeletedId(id: string): boolean {
+  if (!id) return false;
+  const store = readServerStore();
+  return Array.isArray(store.deletedIds) && store.deletedIds.includes(id);
+}
+
 /* Content Helpers */
 export function getServerContent(type?: string): ContentItem[] {
   const store = readServerStore();
+  const deletedIds = Array.isArray(store.deletedIds) ? store.deletedIds : [];
+  let list = (store.content || []).filter(c => !deletedIds.includes(c.id));
   if (type) {
-    return store.content.filter(c => c.type === type);
+    return list.filter(c => c.type === type);
   }
-  return store.content;
+  return list;
 }
 
 export function saveServerContent(item: ContentItem): ContentItem {
@@ -133,14 +170,21 @@ export function saveServerContent(item: ContentItem): ContentItem {
     list.unshift(toSave);
   }
 
-  writeServerStore({ content: list });
+  // If item was previously in deletedIds, clear it upon explicit save
+  const currentDeleted = Array.isArray(store.deletedIds) ? store.deletedIds : [];
+  const updatedDeleted = currentDeleted.filter(d => d !== item.id);
+
+  writeServerStore({ content: list, deletedIds: updatedDeleted });
   return toSave;
 }
 
 export function deleteServerContent(id: string): void {
   const store = readServerStore();
   const list = store.content.filter(c => c.id !== id);
-  writeServerStore({ content: list });
+  const banners = (store.banners || []).filter(b => b.contentId !== id && b.id !== id);
+  const currentDeleted = Array.isArray(store.deletedIds) ? store.deletedIds : [];
+  const updatedDeleted = currentDeleted.includes(id) ? currentDeleted : [...currentDeleted, id];
+  writeServerStore({ content: list, banners, deletedIds: updatedDeleted });
 }
 
 export function incrementServerContentViews(id: string, amount: number = 1): number {
@@ -160,7 +204,8 @@ export function incrementServerContentViews(id: string, amount: number = 1): num
 /* Seasons Helpers */
 export function getServerSeasons(seriesId?: string): Season[] {
   const store = readServerStore();
-  const list = store.seasons || [];
+  const deletedIds = Array.isArray(store.deletedIds) ? store.deletedIds : [];
+  let list = (store.seasons || []).filter(s => !deletedIds.includes(s.id));
   if (seriesId) {
     return list.filter(s => s.seriesId === seriesId || (s as any).contentId === seriesId).sort((a, b) => a.seasonNumber - b.seasonNumber);
   }
@@ -183,20 +228,26 @@ export function saveServerSeason(season: Season): Season {
     list.push(toSave);
   }
 
-  writeServerStore({ seasons: list });
+  const currentDeleted = Array.isArray(store.deletedIds) ? store.deletedIds : [];
+  const updatedDeleted = currentDeleted.filter(d => d !== season.id);
+
+  writeServerStore({ seasons: list, deletedIds: updatedDeleted });
   return toSave;
 }
 
 export function deleteServerSeason(id: string): void {
   const store = readServerStore();
   const list = (store.seasons || []).filter(s => s.id !== id);
-  writeServerStore({ seasons: list });
+  const currentDeleted = Array.isArray(store.deletedIds) ? store.deletedIds : [];
+  const updatedDeleted = currentDeleted.includes(id) ? currentDeleted : [...currentDeleted, id];
+  writeServerStore({ seasons: list, deletedIds: updatedDeleted });
 }
 
 /* Episodes Helpers */
 export function getServerEpisodes(seriesId?: string, seasonId?: string): Episode[] {
   const store = readServerStore();
-  let list = store.episodes || [];
+  const deletedIds = Array.isArray(store.deletedIds) ? store.deletedIds : [];
+  let list = (store.episodes || []).filter(e => !deletedIds.includes(e.id));
   if (seriesId) {
     list = list.filter(e => e.seriesId === seriesId || (e as any).contentId === seriesId);
   }
@@ -222,14 +273,19 @@ export function saveServerEpisode(episode: Episode): Episode {
     list.push(toSave);
   }
 
-  writeServerStore({ episodes: list });
+  const currentDeleted = Array.isArray(store.deletedIds) ? store.deletedIds : [];
+  const updatedDeleted = currentDeleted.filter(d => d !== episode.id);
+
+  writeServerStore({ episodes: list, deletedIds: updatedDeleted });
   return toSave;
 }
 
 export function deleteServerEpisode(id: string): void {
   const store = readServerStore();
   const list = (store.episodes || []).filter(e => e.id !== id);
-  writeServerStore({ episodes: list });
+  const currentDeleted = Array.isArray(store.deletedIds) ? store.deletedIds : [];
+  const updatedDeleted = currentDeleted.includes(id) ? currentDeleted : [...currentDeleted, id];
+  writeServerStore({ episodes: list, deletedIds: updatedDeleted });
 }
 
 /* Company Info Helpers */
@@ -251,15 +307,14 @@ export function saveServerCompanyInfo(info: Partial<CompanyInfo>): CompanyInfo {
 /* Live Channels Helpers */
 export function getServerLiveChannels(): LiveChannel[] {
   const store = readServerStore();
-  if (store.liveChannels && Array.isArray(store.liveChannels) && store.liveChannels.length > 0) {
-    return store.liveChannels;
-  }
-  return initialLiveChannels;
+  const deletedIds = Array.isArray(store.deletedIds) ? store.deletedIds : [];
+  const rawList = store.liveChannels && Array.isArray(store.liveChannels) ? store.liveChannels : initialLiveChannels;
+  return rawList.filter(c => !deletedIds.includes(c.id));
 }
 
 export function saveServerLiveChannel(channel: LiveChannel): LiveChannel {
   const store = readServerStore();
-  const list = [...(store.liveChannels || initialLiveChannels)];
+  const list = [...(store.liveChannels && Array.isArray(store.liveChannels) ? store.liveChannels : initialLiveChannels)];
   const idx = list.findIndex(c => c.id === channel.id);
   const now = new Date().toISOString();
   const toSave: LiveChannel = {
@@ -273,14 +328,124 @@ export function saveServerLiveChannel(channel: LiveChannel): LiveChannel {
     list.unshift(toSave);
   }
 
-  writeServerStore({ liveChannels: list });
+  const currentDeleted = Array.isArray(store.deletedIds) ? store.deletedIds : [];
+  const updatedDeleted = currentDeleted.filter(d => d !== channel.id);
+
+  writeServerStore({ liveChannels: list, deletedIds: updatedDeleted });
   return toSave;
 }
 
 export function deleteServerLiveChannel(id: string): void {
   const store = readServerStore();
-  const list = (store.liveChannels || initialLiveChannels).filter(c => c.id !== id);
-  writeServerStore({ liveChannels: list });
+  const rawList = store.liveChannels && Array.isArray(store.liveChannels) ? store.liveChannels : initialLiveChannels;
+  const list = rawList.filter(c => c.id !== id);
+  const currentDeleted = Array.isArray(store.deletedIds) ? store.deletedIds : [];
+  const updatedDeleted = currentDeleted.includes(id) ? currentDeleted : [...currentDeleted, id];
+  writeServerStore({ liveChannels: list, deletedIds: updatedDeleted });
+}
+
+/* Banners Helpers */
+export function getServerBanners(): Banner[] {
+  const store = readServerStore();
+  const deletedIds = Array.isArray(store.deletedIds) ? store.deletedIds : [];
+  const rawList = store.banners && Array.isArray(store.banners) ? store.banners : initialBanners;
+  return rawList
+    .filter(b => !deletedIds.includes(b.id) && !deletedIds.includes(b.contentId))
+    .sort((a, b) => a.order - b.order);
+}
+
+export function saveServerBanner(banner: Banner): Banner {
+  const store = readServerStore();
+  const list = [...(store.banners && Array.isArray(store.banners) ? store.banners : initialBanners)];
+  const idx = list.findIndex(b => b.id === banner.id);
+  if (idx >= 0) {
+    list[idx] = banner;
+  } else {
+    list.push(banner);
+  }
+
+  const currentDeleted = Array.isArray(store.deletedIds) ? store.deletedIds : [];
+  const updatedDeleted = currentDeleted.filter(d => d !== banner.id && d !== banner.contentId);
+
+  writeServerStore({ banners: list, deletedIds: updatedDeleted });
+  return banner;
+}
+
+export function deleteServerBanner(id: string): void {
+  const store = readServerStore();
+  const rawList = store.banners && Array.isArray(store.banners) ? store.banners : initialBanners;
+  const list = rawList.filter(b => b.id !== id);
+  const currentDeleted = Array.isArray(store.deletedIds) ? store.deletedIds : [];
+  const updatedDeleted = currentDeleted.includes(id) ? currentDeleted : [...currentDeleted, id];
+  writeServerStore({ banners: list, deletedIds: updatedDeleted });
+}
+
+/* Ads Helpers */
+export function getServerAds(): Advertisement[] {
+  const store = readServerStore();
+  const deletedIds = Array.isArray(store.deletedIds) ? store.deletedIds : [];
+  const rawList = store.ads && Array.isArray(store.ads) ? store.ads : initialAds;
+  return rawList.filter(a => !deletedIds.includes(a.id));
+}
+
+export function saveServerAd(ad: Advertisement): Advertisement {
+  const store = readServerStore();
+  const list = [...(store.ads && Array.isArray(store.ads) ? store.ads : initialAds)];
+  const idx = list.findIndex(a => a.id === ad.id);
+  if (idx >= 0) {
+    list[idx] = ad;
+  } else {
+    list.push(ad);
+  }
+
+  const currentDeleted = Array.isArray(store.deletedIds) ? store.deletedIds : [];
+  const updatedDeleted = currentDeleted.filter(d => d !== ad.id);
+
+  writeServerStore({ ads: list, deletedIds: updatedDeleted });
+  return ad;
+}
+
+export function deleteServerAd(id: string): void {
+  const store = readServerStore();
+  const rawList = store.ads && Array.isArray(store.ads) ? store.ads : initialAds;
+  const list = rawList.filter(a => a.id !== id);
+  const currentDeleted = Array.isArray(store.deletedIds) ? store.deletedIds : [];
+  const updatedDeleted = currentDeleted.includes(id) ? currentDeleted : [...currentDeleted, id];
+  writeServerStore({ ads: list, deletedIds: updatedDeleted });
+}
+
+/* Categories Helpers */
+export function getServerCategories(): ContentCategory[] {
+  const store = readServerStore();
+  const deletedIds = Array.isArray(store.deletedIds) ? store.deletedIds : [];
+  const rawList = store.categories && Array.isArray(store.categories) ? store.categories : initialCategories;
+  return rawList.filter(c => !deletedIds.includes(c.id));
+}
+
+export function saveServerCategory(cat: ContentCategory): ContentCategory {
+  const store = readServerStore();
+  const list = [...(store.categories && Array.isArray(store.categories) ? store.categories : initialCategories)];
+  const idx = list.findIndex(c => c.id === cat.id);
+  if (idx >= 0) {
+    list[idx] = cat;
+  } else {
+    list.push(cat);
+  }
+
+  const currentDeleted = Array.isArray(store.deletedIds) ? store.deletedIds : [];
+  const updatedDeleted = currentDeleted.filter(d => d !== cat.id);
+
+  writeServerStore({ categories: list, deletedIds: updatedDeleted });
+  return cat;
+}
+
+export function deleteServerCategory(id: string): void {
+  const store = readServerStore();
+  const rawList = store.categories && Array.isArray(store.categories) ? store.categories : initialCategories;
+  const list = rawList.filter(c => c.id !== id);
+  const currentDeleted = Array.isArray(store.deletedIds) ? store.deletedIds : [];
+  const updatedDeleted = currentDeleted.includes(id) ? currentDeleted : [...currentDeleted, id];
+  writeServerStore({ categories: list, deletedIds: updatedDeleted });
 }
 
 /* Subscription Plans (Synchronized with Mobile App & Web) */
@@ -345,15 +510,14 @@ export const defaultAppPlans: Plan[] = [
 
 export function getServerPlans(): Plan[] {
   const store = readServerStore();
-  if (store.plans && Array.isArray(store.plans) && store.plans.length > 0) {
-    return store.plans;
-  }
-  return defaultAppPlans;
+  const deletedIds = Array.isArray(store.deletedIds) ? store.deletedIds : [];
+  const rawList = store.plans && Array.isArray(store.plans) ? store.plans : defaultAppPlans;
+  return rawList.filter(p => !deletedIds.includes(p.id));
 }
 
 export function saveServerPlan(plan: Plan): Plan {
   const store = readServerStore();
-  const list = [...(store.plans && store.plans.length > 0 ? store.plans : defaultAppPlans)];
+  const list = [...(store.plans && Array.isArray(store.plans) ? store.plans : defaultAppPlans)];
   const idx = list.findIndex(p => p.id === plan.id);
   const toSave: Plan = {
     ...plan,
@@ -369,12 +533,109 @@ export function saveServerPlan(plan: Plan): Plan {
     list.push(toSave);
   }
 
-  writeServerStore({ plans: list });
+  const currentDeleted = Array.isArray(store.deletedIds) ? store.deletedIds : [];
+  const updatedDeleted = currentDeleted.filter(d => d !== plan.id);
+
+  writeServerStore({ plans: list, deletedIds: updatedDeleted });
   return toSave;
 }
 
 export function deleteServerPlan(id: string): void {
   const store = readServerStore();
-  const list = (store.plans || []).filter(p => p.id !== id);
-  writeServerStore({ plans: list });
+  const rawList = store.plans && Array.isArray(store.plans) ? store.plans : defaultAppPlans;
+  const list = rawList.filter(p => p.id !== id);
+  const currentDeleted = Array.isArray(store.deletedIds) ? store.deletedIds : [];
+  const updatedDeleted = currentDeleted.includes(id) ? currentDeleted : [...currentDeleted, id];
+  writeServerStore({ plans: list, deletedIds: updatedDeleted });
 }
+
+// ----------------- Grievances ("जनतेचा आवाज") -----------------
+export function getServerGrievances(): Grievance[] {
+  const store = readServerStore();
+  const deletedIds = Array.isArray(store.deletedIds) ? store.deletedIds : [];
+  const list = store.grievances || initialGrievances;
+  return list.filter(g => !deletedIds.includes(g.id));
+}
+
+export function saveServerGrievance(g: Grievance): Grievance {
+  const store = readServerStore();
+  const list = [...(store.grievances || initialGrievances)];
+  const idx = list.findIndex(item => item.id === g.id);
+  if (idx >= 0) {
+    list[idx] = g;
+  } else {
+    list.unshift(g);
+  }
+
+  const currentDeleted = Array.isArray(store.deletedIds) ? store.deletedIds : [];
+  const updatedDeleted = currentDeleted.filter(d => d !== g.id);
+
+  writeServerStore({ grievances: list, deletedIds: updatedDeleted });
+  return g;
+}
+
+export function updateServerGrievanceStatus(
+  id: string, 
+  status: 'pending' | 'verified' | 'published' | 'resolved', 
+  adminNotes?: string
+): Grievance | null {
+  const store = readServerStore();
+  const list = [...(store.grievances || initialGrievances)];
+  const idx = list.findIndex(item => item.id === id);
+  if (idx >= 0) {
+    list[idx] = {
+      ...list[idx],
+      status,
+      ...(adminNotes ? { adminNotes } : {}),
+    };
+    writeServerStore({ grievances: list });
+    return list[idx];
+  }
+  return null;
+}
+
+export function deleteServerGrievance(id: string): void {
+  const store = readServerStore();
+  const list = (store.grievances || initialGrievances).filter(item => item.id !== id);
+  const currentDeleted = Array.isArray(store.deletedIds) ? store.deletedIds : [];
+  const updatedDeleted = currentDeleted.includes(id) ? currentDeleted : [...currentDeleted, id];
+  writeServerStore({ grievances: list, deletedIds: updatedDeleted });
+}
+
+// ----------------- Notifications -----------------
+export function getServerNotifications(): NotificationItem[] {
+  const store = readServerStore();
+  const deletedIds = Array.isArray(store.deletedIds) ? store.deletedIds : [];
+  return (store.notifications || initialNotifications)
+    .filter(n => !n.id.startsWith('notif-demo') && !deletedIds.includes(n.id));
+}
+
+export function saveServerNotification(item: NotificationItem): NotificationItem {
+  const store = readServerStore();
+  const list = [...(store.notifications || initialNotifications).filter(n => !n.id.startsWith('notif-demo'))];
+  const idx = list.findIndex(n => n.id === item.id);
+  if (idx >= 0) {
+    list[idx] = item;
+  } else {
+    list.unshift(item);
+  }
+
+  const currentDeleted = Array.isArray(store.deletedIds) ? store.deletedIds : [];
+  const updatedDeleted = currentDeleted.filter(d => d !== item.id);
+
+  writeServerStore({ notifications: list, deletedIds: updatedDeleted });
+  return item;
+}
+
+export function deleteServerNotification(id: string): void {
+  const store = readServerStore();
+  const list = (store.notifications || initialNotifications).filter(n => n.id !== id);
+  const currentDeleted = Array.isArray(store.deletedIds) ? store.deletedIds : [];
+  const updatedDeleted = currentDeleted.includes(id) ? currentDeleted : [...currentDeleted, id];
+  writeServerStore({ notifications: list, deletedIds: updatedDeleted });
+}
+
+export function clearServerNotifications(): void {
+  writeServerStore({ notifications: [] });
+}
+
