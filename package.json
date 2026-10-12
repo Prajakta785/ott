@@ -6,7 +6,9 @@
     "dev": "next dev -H 0.0.0.0 -p 3001",
     "build": "next build",
     "start": "next start -H 0.0.0.0 -p 3001",
-    "lint": "next lint"
+    "lint": "next lint",
+    "push": "node scripts/auto-push.js",
+    "auto-push": "node scripts/auto-push.js watch"
   },
   "dependencies": {
     "@distube/ytdl-core": "^4.16.12",
