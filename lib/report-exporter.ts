@@ -81,19 +81,37 @@ export async function exportToExcel(config: ReportExportConfig): Promise<void> {
   // Convert to worksheet
   const ws = XLSX.utils.aoa_to_sheet(allRows);
 
-  // Auto-calculate column widths
+  // Auto-calculate generous column widths so no label or data cell is truncated
+  const baseMinWidths = [34, 28, 22, 20, 28, 28, 24, 24];
   const colWidths = config.headers.map((h, colIdx) => {
-    let maxLen = h.length;
-    config.data.forEach((row) => {
+    const minW = baseMinWidths[colIdx] || 20;
+    let maxLen = Math.max(h.length + 4, minW);
+
+    // Check all rows except full-width title rows (rows 0, 1, and 2)
+    allRows.forEach((row, rowIdx) => {
+      if (rowIdx < 3) return; // skip header banner, title, and subtitle
       const val = row[colIdx];
       if (val !== undefined && val !== null) {
-        maxLen = Math.max(maxLen, String(val).length);
+        const strVal = String(val).trim();
+        // Skip separator lines like '--- SUMMARY METRICS ---'
+        if (!strVal.startsWith('---')) {
+          maxLen = Math.max(maxLen, strVal.length + 3);
+        }
       }
     });
-    return { wch: Math.min(Math.max(maxLen + 4, 14), 50) };
+
+    return { wch: Math.min(Math.max(maxLen, minW), 55) };
   });
 
   ws['!cols'] = colWidths;
+
+  // Merge top banner titles across all table columns
+  const maxColIdx = Math.max(config.headers.length - 1, 5);
+  ws['!merges'] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: maxColIdx } }, // Main brand banner
+    { s: { r: 1, c: 0 }, e: { r: 1, c: maxColIdx } }, // Report title
+    { s: { r: 2, c: 1 }, e: { r: 2, c: maxColIdx } }, // Subtitle description span
+  ];
 
   // Create workbook and append sheet
   const wb = XLSX.utils.book_new();
