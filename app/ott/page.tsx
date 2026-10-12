@@ -52,7 +52,7 @@ export default function OTTPlatformPage() {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [categories, setCategories] = useState<ContentCategory[]>([]);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   // Active Tab & Language Filter
   const [activeTab, setActiveTab] = useState<'all' | 'live' | 'movies' | 'series' | 'plans' | string>('movies');
@@ -117,8 +117,8 @@ export default function OTTPlatformPage() {
             name: 'राहुल पाटील',
             phone: '+91 98221 44520',
             createdAt: new Date().toISOString(),
-            subscriptionStatus: 'active',
-            planName: 'सुवर्ण वार्षिक VIP (Annual 4K)',
+            subscriptionStatus: 'free',
+            planName: 'Free User',
             devices: [
               { deviceId: 'dev-1', deviceName: 'Samsung 4K Android TV', platform: 'android-tv', lastLogin: 'Just now' },
               { deviceId: 'dev-2', deviceName: 'OnePlus 12 (Mobile)', platform: 'android', lastLogin: 'Yesterday' }
@@ -519,7 +519,7 @@ export default function OTTPlatformPage() {
           (gNorm.includes('english') && (itemG.includes('english') || itemG.includes('इंग्रजी')));
       }) ||
       (m.subCategory && String(m.subCategory).toLowerCase().includes(gNorm)) ||
-      (Array.isArray(m.subCategories) && m.subCategories.some(sub => String(sub).toLowerCase().includes(gNorm))) ||
+      (Array.isArray((m as any).subCategories) && (m as any).subCategories.some((sub: any) => String(sub).toLowerCase().includes(gNorm))) ||
       (Array.isArray(m.tags) && m.tags.some(t => String(t).toLowerCase().includes(gNorm))) ||
       (m.type && String(m.type).toLowerCase() === gNorm) ||
       (m.title && String(m.title).toLowerCase().includes(gNorm));
@@ -748,7 +748,7 @@ export default function OTTPlatformPage() {
               </div>
               <div>
                 <div className="flex items-center gap-1.5">
-                  <span className="font-black text-white text-base tracking-wider">AURORA OTT</span>
+                  <img src="/brand-horizontal.png" alt="ग्रामीण भारत TV" className="h-7 sm:h-9 w-auto object-contain" />
                   <span className="px-1.5 py-0.5 rounded bg-rose-600 text-white font-black text-[9px]">4K VIP</span>
                 </div>
                 <p className="text-[10px] text-amber-400 font-extrabold tracking-tight">
@@ -762,7 +762,7 @@ export default function OTTPlatformPage() {
                 onClick={() => { setActiveTab('all'); setSelectedGenre('all'); }}
                 className={`transition hover:text-white cursor-pointer ${activeTab === 'all' && selectedGenre === 'all' ? 'text-rose-500 font-black' : ''}`}
               >
-                {t('navAll')}
+                {(lang === 'mr' ? 'सर्व' : lang === 'hi' ? 'सभी' : 'All')}
               </button>
               <button
                 onClick={() => { setActiveTab('movies'); setSelectedGenre('all'); }}
@@ -953,7 +953,7 @@ export default function OTTPlatformPage() {
                 : 'bg-slate-900 border border-slate-800 text-slate-300 hover:text-white hover:bg-slate-800'
             }`}
           >
-            {t('navAll')}
+            {(lang === 'mr' ? 'सर्व' : lang === 'hi' ? 'सभी' : 'All')}
           </button>
           <button
             onClick={() => { setActiveTab('movies'); setSelectedGenre('all'); }}
@@ -1969,38 +1969,78 @@ export default function OTTPlatformPage() {
         </div>
       )}
 
-      {/* MOBILE / ANDROID APP BOTTOM NAVIGATION BAR */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#0B0F19]/95 backdrop-blur-xl border-t border-slate-800/80 px-2 py-2 flex items-center justify-around text-[10px] font-bold shadow-2xl">
+      {/* MOBILE / ANDROID APP FLOATING PILL BOTTOM NAVIGATION BAR (Exact App Design) */}
+      <nav className="fixed bottom-3 left-3 right-3 sm:left-1/2 sm:-translate-x-1/2 sm:max-w-md z-40 bg-[#0F172A]/90 backdrop-blur-xl border border-slate-700/80 rounded-[26px] px-3 py-1.5 flex items-center justify-around text-[10px] font-bold shadow-[0_12px_40px_-5px_rgba(0,0,0,0.7)] ring-1 ring-white/10">
         <button
-          onClick={() => setActiveTab('movies')}
-          className={`flex flex-col items-center gap-1 transition ${activeTab === 'movies' ? 'text-rose-500 font-black' : 'text-slate-400 hover:text-slate-200'}`}
+          onClick={() => { setActiveTab('all'); setSelectedGenre('all'); }}
+          className={`flex flex-col items-center justify-center py-1 px-2 rounded-2xl transition cursor-pointer flex-1 ${
+            activeTab === 'all' && !showProfileModal
+              ? 'text-amber-400 font-black'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
         >
-          <Film className="w-4 h-4" />
-          <span>{t('navMovies')}</span>
+          <div className={`p-1 rounded-xl transition-all ${activeTab === 'all' && !showProfileModal ? 'bg-amber-400/20 text-amber-300' : ''}`}>
+            <Tv className="w-4 h-4" />
+          </div>
+          <span className="text-[9.5px] mt-0.5">{lang === 'mr' ? 'होम' : lang === 'hi' ? 'होम' : 'Home'}</span>
         </button>
+
         <button
-          onClick={() => setActiveTab('series')}
-          className={`flex flex-col items-center gap-1 transition ${activeTab === 'series' ? 'text-rose-500 font-black' : 'text-slate-400 hover:text-slate-200'}`}
+          onClick={() => { setActiveTab('movies'); }}
+          className={`flex flex-col items-center justify-center py-1 px-2 rounded-2xl transition cursor-pointer flex-1 ${
+            activeTab === 'movies' && !showProfileModal
+              ? 'text-rose-500 font-black'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
         >
-          <Tv className="w-4 h-4" />
-          <span>{t('navSeries')}</span>
+          <div className={`p-1 rounded-xl transition-all ${activeTab === 'movies' && !showProfileModal ? 'bg-rose-500/20 text-rose-400' : ''}`}>
+            <Film className="w-4 h-4" />
+          </div>
+          <span className="text-[9.5px] mt-0.5">{t('navMovies')}</span>
         </button>
+
         <button
-          onClick={() => setActiveTab('plans')}
-          className={`flex flex-col items-center gap-1 transition ${activeTab === 'plans' ? 'text-amber-400 font-black' : 'text-slate-400 hover:text-slate-200'}`}
+          onClick={() => { setActiveTab('series'); }}
+          className={`flex flex-col items-center justify-center py-1 px-2 rounded-2xl transition cursor-pointer flex-1 ${
+            activeTab === 'series' && !showProfileModal
+              ? 'text-purple-400 font-black'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
         >
-          <Crown className="w-4 h-4" />
-          <span>VIP</span>
+          <div className={`p-1 rounded-xl transition-all ${activeTab === 'series' && !showProfileModal ? 'bg-purple-500/20 text-purple-300' : ''}`}>
+            <Layers className="w-4 h-4" />
+          </div>
+          <span className="text-[9.5px] mt-0.5">{t('navSeries')}</span>
         </button>
+
+        <button
+          onClick={() => { setActiveTab('plans'); }}
+          className={`flex flex-col items-center justify-center py-1 px-2 rounded-2xl transition cursor-pointer flex-1 ${
+            activeTab === 'plans' && !showProfileModal
+              ? 'text-amber-400 font-black'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <div className={`p-1 rounded-xl transition-all ${activeTab === 'plans' && !showProfileModal ? 'bg-amber-500/20 text-amber-300' : ''}`}>
+            <Crown className="w-4 h-4" />
+          </div>
+          <span className="text-[9.5px] mt-0.5">VIP</span>
+        </button>
+
         <button
           onClick={() => setShowProfileModal(true)}
-          className={`flex flex-col items-center gap-1 transition ${showProfileModal ? 'text-amber-400 font-black' : 'text-slate-400 hover:text-slate-200'}`}
+          className={`flex flex-col items-center justify-center py-1 px-2 rounded-2xl transition cursor-pointer flex-1 ${
+            showProfileModal
+              ? 'text-amber-400 font-black'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
         >
-          <Users className="w-4 h-4" />
-          <span>{t('myAccount') || 'खाते'}</span>
+          <div className={`p-1 rounded-xl transition-all ${showProfileModal ? 'bg-amber-500/20 text-amber-300' : ''}`}>
+            <Users className="w-4 h-4" />
+          </div>
+          <span className="text-[9.5px] mt-0.5">{lang === 'mr' ? 'खाते' : lang === 'hi' ? 'खाता' : 'Account'}</span>
         </button>
       </nav>
     </div>
   );
 }
-

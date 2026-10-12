@@ -118,8 +118,15 @@ function MediaContentPageInner() {
         firestoreService.getCategories(),
         firestoreService.getContent(),
       ]);
-      setCategories(allCats);
-      setItems(allContent);
+      const isPodcastCat = (c: any) => {
+        const name = String(c?.nameEnglish || '').toLowerCase().trim();
+        const mr = String(c?.nameMarathi || '').toLowerCase().trim();
+        const id = String(c?.id || '').toLowerCase().trim();
+        const type = String(c?.type || '').toLowerCase().trim();
+        return name.includes('podcast') || mr.includes('पॉडकास्ट') || id.includes('podcast') || type === 'podcast';
+      };
+      setCategories(allCats.filter(c => !isPodcastCat(c)));
+      setItems(allContent.filter(i => i.type !== 'podcast' && !i.id?.startsWith('pod-') && !i.genres?.some(g => g.toLowerCase().includes('podcast'))));
     } catch (err) {
       console.error('Failed to load media data:', err);
     } finally {
@@ -129,6 +136,15 @@ function MediaContentPageInner() {
 
   useEffect(() => {
     loadData();
+    const handleUpdate = () => {
+      loadData();
+    };
+    window.addEventListener('ott_content_updated', handleUpdate);
+    window.addEventListener('storage', handleUpdate);
+    return () => {
+      window.removeEventListener('ott_content_updated', handleUpdate);
+      window.removeEventListener('storage', handleUpdate);
+    };
   }, []);
 
   useEffect(() => {
@@ -148,11 +164,48 @@ function MediaContentPageInner() {
     let result = items.filter(item => {
       if (!selectedCategory || selectedCategory === 'all') return true;
       const catLower = selectedCategory.toLowerCase().trim();
-      const inGenres = item.genres?.some(g => g.toLowerCase().includes(catLower));
-      const inTags = item.tags?.some(t => t.toLowerCase().includes(catLower));
-      const inSubCategory = item.subCategory?.toLowerCase().includes(catLower);
-      const inType = item.type?.toLowerCase() === catLower;
-      return inGenres || inTags || inSubCategory || inType;
+      const isPodcastCat = catLower.includes('podcast') || catLower.includes('पॉडकास्ट');
+
+      if (isPodcastCat) {
+        return (
+          item.type === 'podcast' ||
+          item.type === 'audio' ||
+          item.genres?.some(g => g.toLowerCase().includes('podcast') || g.includes('पॉडकास्ट')) ||
+          item.tags?.some(t => t.toLowerCase().includes('podcast') || t.includes('पॉडकास्ट')) ||
+          item.subCategory?.toLowerCase().includes('podcast') ||
+          item.subCategory?.includes('पॉडकास्ट') ||
+          item.subCategories?.some(s => s.toLowerCase().includes('podcast') || s.includes('पॉडकास्ट')) ||
+          item.title?.toLowerCase().includes('podcast') ||
+          item.title?.includes('पॉडकास्ट')
+        );
+      }
+
+      // Check for matching category across English and Marathi
+      const activeCat = categories.find(c => 
+        c.nameEnglish.toLowerCase() === catLower || 
+        c.nameMarathi.toLowerCase() === catLower
+      );
+      const enTerm = activeCat ? activeCat.nameEnglish.toLowerCase() : catLower;
+      const mrTerm = activeCat ? activeCat.nameMarathi.toLowerCase() : catLower;
+
+      const inGenres = item.genres?.some(g => {
+        const gl = g.toLowerCase();
+        return gl.includes(catLower) || gl.includes(enTerm) || gl.includes(mrTerm);
+      });
+      const inTags = item.tags?.some(t => {
+        const tl = t.toLowerCase();
+        return tl.includes(catLower) || tl.includes(enTerm) || tl.includes(mrTerm);
+      });
+      const inSubCategory = item.subCategory?.toLowerCase().includes(catLower) ||
+                            item.subCategory?.toLowerCase().includes(enTerm) ||
+                            item.subCategory?.toLowerCase().includes(mrTerm);
+      const inSubCategories = item.subCategories?.some(s => {
+        const sl = s.toLowerCase();
+        return sl.includes(catLower) || sl.includes(enTerm) || sl.includes(mrTerm);
+      });
+      const inType = item.type?.toLowerCase() === catLower || item.type?.toLowerCase() === enTerm;
+
+      return inGenres || inTags || inSubCategory || inSubCategories || inType;
     });
 
     if (selectedDistrict !== 'All') {
@@ -174,7 +227,7 @@ function MediaContentPageInner() {
     }
 
     setFilteredItems(result);
-  }, [items, selectedCategory, searchTerm, selectedDistrict, statusFilter]);
+  }, [items, selectedCategory, searchTerm, selectedDistrict, statusFilter, categories]);
 
   const handleOpenCreate = () => {
     const isPodcastCat = selectedCategory.toLowerCase().includes('podcast') || selectedCategory.includes('पॉडकास्ट');
@@ -233,6 +286,8 @@ function MediaContentPageInner() {
                             selectedCategory.toLowerCase().includes('podcast') || 
                             selectedCategory.includes('पॉडकास्ट');
       const tagList = tagsInput.split(',').map(s => s.trim()).filter(Boolean);
+      const audioLink = (currentItem.audioTrackUrl || currentItem.audioUrl || currentItem.videoUrl || currentItem.videoId || '').trim();
+      const videoLink = (currentItem.videoUrl || currentItem.videoId || currentItem.audioUrl || currentItem.audioTrackUrl || '').trim();
       const toSave: ContentItem = {
         id: currentItem.id || ((isPodcastItem ? 'pod-' : 'media-') + Date.now().toString(36)),
         type: (isPodcastItem ? 'podcast' : (currentItem.type as ContentType) || 'video'),
@@ -243,6 +298,7 @@ function MediaContentPageInner() {
         genres: Array.from(new Set([selectedCategory, isPodcastItem ? 'Podcast' : '', isPodcastItem ? 'पॉडकास्ट' : '', ...(currentItem.genres || [])].filter(Boolean))),
         cast: currentItem.cast || [currentItem.reporterName || (isPodcastItem ? 'पॉडकास्ट निवेदक' : 'विशेष प्रतिनिधी')],
         director: currentItem.director || (isPodcastItem ? 'ग्रामीण भारत पॉडकास्ट नेटवर्क' : 'ग्रामीण भारत TV / नामदार महाराष्ट्र'),
+        host: currentItem.host || currentItem.reporterName || (isPodcastItem ? 'पॉडकास्ट निवेदक' : ''),
         language: currentItem.language || ['मराठी (Marathi)'],
         releaseDate: currentItem.releaseDate || new Date().toISOString().split('T')[0],
         poster: currentItem.poster || (isPodcastItem ? 'https://images.unsplash.com/photo-1592982537447-7440770cbfc9?w=800' : 'https://vz-92cc7e0f-cd7.b-cdn.net/e6eb731d-a1b1-4885-a40b-54c4e860c78e/thumbnail.jpg'),
@@ -255,13 +311,14 @@ function MediaContentPageInner() {
         views: currentItem.views || 0,
         duration: currentItem.duration || (isPodcastItem ? 1800 : 600),
         durationMinutes: Math.round((currentItem.duration || (isPodcastItem ? 1800 : 600)) / 60),
-        videoId: currentItem.videoId || currentItem.audioUrl || '',
-        videoUrl: currentItem.videoUrl || currentItem.audioUrl || '',
-        audioUrl: currentItem.audioUrl || currentItem.audioTrackUrl || currentItem.videoUrl || '',
-        audioTrackUrl: currentItem.audioTrackUrl || currentItem.audioUrl || '',
+        videoId: isPodcastItem ? (currentItem.videoId || audioLink) : (currentItem.videoId || videoLink),
+        videoUrl: isPodcastItem ? (currentItem.videoUrl || audioLink) : (currentItem.videoUrl || videoLink),
+        audioUrl: audioLink,
+        audioTrackUrl: audioLink,
         videoStatus: 'ready',
         resolution: currentItem.resolution || (isPodcastItem ? 'HD Audio' : '1080p Full HD'),
         subCategory: selectedCategory || (isPodcastItem ? 'पॉडकास्ट' : 'सामान्य'),
+        subCategories: Array.from(new Set([selectedCategory, isPodcastItem ? 'पॉडकास्ट' : '', isPodcastItem ? 'Podcast' : ''].filter(Boolean))),
         reporterName: currentItem.reporterName || (isPodcastItem ? 'पॉडकास्ट निवेदक' : 'विशेष प्रतिनिधी'),
         district: currentItem.district || 'Pune (पुणे)',
         taluka: currentItem.taluka || '',
@@ -324,24 +381,24 @@ function MediaContentPageInner() {
   };
 
   const getCategoryLabel = (nameEn: string, nameMr?: string) => {
-    switch (nameEn) {
-      case 'Live':
+    switch (nameEn?.toLowerCase()) {
+      case 'live':
         return lang === 'mr' ? 'लाईव्ह टीव्ही' : lang === 'hi' ? 'लाइव टीवी' : 'Live';
-      case 'News':
+      case 'news':
         return lang === 'mr' ? 'बातम्या' : lang === 'hi' ? 'समाचार' : 'News';
-      case 'Namdar Maharashtra':
-      case 'Nammad Maharashtra':
+      case 'namdar maharashtra':
+      case 'nammad maharashtra':
         return lang === 'mr' ? 'नामदार महाराष्ट्र' : lang === 'hi' ? 'नामदार महाराष्ट्र' : 'Namdar Maharashtra';
-      case 'Gramin Bharat TV':
+      case 'gramin bharat tv':
         return lang === 'mr' ? 'ग्रामीण भारत TV' : lang === 'hi' ? 'ग्रामीण भारत TV' : 'Gramin Bharat TV';
-      case 'Entertainment':
+      case 'entertainment':
         return lang === 'mr' ? 'मनोरंजन' : lang === 'hi' ? 'मनोरंजन' : 'Entertainment';
-      case 'Movies':
+      case 'movies':
         return lang === 'mr' ? 'चित्रपट' : lang === 'hi' ? 'फ़िल्में' : 'Movies';
-      case 'Web Series':
+      case 'web series':
         return lang === 'mr' ? 'वेब मालिका' : lang === 'hi' ? 'वेब सीरीज़' : 'Web Series';
-      case 'Podcast':
-      case 'Podcasts':
+      case 'podcast':
+      case 'podcasts':
         return lang === 'mr' ? 'पॉडकास्ट' : lang === 'hi' ? 'पॉडकास्ट' : 'Podcast';
       default:
         if (lang === 'mr' && nameMr) return nameMr;
@@ -415,49 +472,6 @@ function MediaContentPageInner() {
         </div>
       </div>
 
-      {/* Category Pills Bar for quick switching between Namdar Maharashtra, Gramin Bharat TV, Entertainment, Movies, Series, Podcast, etc. */}
-      <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
-        {categories.map((cat) => {
-          const isSelected = selectedCategory.toLowerCase() === cat.nameEnglish.toLowerCase() ||
-                             selectedCategory.toLowerCase() === cat.nameMarathi.toLowerCase();
-          const label = lang === 'mr' ? cat.nameMarathi : (lang === 'hi' ? cat.nameMarathi : cat.nameEnglish);
-          return (
-            <button
-              key={cat.id}
-              type="button"
-              onClick={() => {
-                setSelectedCategory(cat.nameEnglish);
-                router.push(`/admin/media?category=${encodeURIComponent(cat.nameEnglish)}`);
-              }}
-              className={cn(
-                "px-4 py-2.5 rounded-2xl text-xs font-black shrink-0 transition flex items-center gap-2 cursor-pointer shadow-xs",
-                isSelected
-                  ? "bg-slate-900 text-white shadow-md scale-[1.02]"
-                  : "bg-white border border-slate-200 text-slate-700 hover:bg-amber-50 hover:text-amber-900"
-              )}
-            >
-              <span className="text-sm">
-                {cat.nameEnglish.toLowerCase().includes('podcast') ? '🎙️' :
-                 cat.nameEnglish.toLowerCase().includes('live') ? '📡' :
-                 cat.nameEnglish.toLowerCase().includes('news') ? '📰' :
-                 cat.nameEnglish.toLowerCase().includes('movie') ? '🎬' :
-                 cat.nameEnglish.toLowerCase().includes('series') ? '📺' :
-                 cat.nameEnglish.toLowerCase().includes('entertainment') ? '🎭' :
-                 cat.nameEnglish.toLowerCase().includes('gramin') ? '🚜' : '📍'}
-              </span>
-              <span>{label}</span>
-              {cat.badgeText && (
-                <span className={cn(
-                  "text-[10px] px-2 py-0.5 rounded-full font-bold",
-                  isSelected ? "bg-white/20 text-white" : "bg-slate-100 text-slate-600"
-                )}>
-                  {cat.badgeText}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
 
       {/* Filter & Search Bar matching News Management */}
       <div className="flex flex-col sm:flex-row gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">

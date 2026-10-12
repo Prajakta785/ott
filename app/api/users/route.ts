@@ -29,13 +29,19 @@ function normalizeFirestoreUser(doc: any): User | null {
   // Determine session liveness & logout state
   const lastLoginTime = doc.lastLogin || (Array.isArray(doc.devices) && doc.devices.length > 0 ? doc.devices[0].lastLogin : null) || doc.loginTime || doc.createdAt || null;
   const lastLogoutTime = doc.lastLogout || null;
+  const lastHeartbeatTime = doc.lastHeartbeat || doc.lastActive || null;
 
   const loginMs = lastLoginTime ? new Date(lastLoginTime).getTime() : 0;
   const logoutMs = lastLogoutTime ? new Date(lastLogoutTime).getTime() : 0;
+  const heartbeatMs = lastHeartbeatTime ? new Date(lastHeartbeatTime).getTime() : 0;
   const isLoggedOutByTimestamp = logoutMs > 0 && loginMs > 0 && logoutMs >= loginMs;
 
+  // If app is closed/cleared, heartbeat stops. After 90s without ping, mark as logged out
+  const latestActivityMs = Math.max(heartbeatMs, loginMs);
+  const isHeartbeatStale = latestActivityMs > 0 && (Date.now() - latestActivityMs > 90_000);
+
   // Strict check: only explicitly active sessions are considered active
-  const isExplicitlyLoggedOut = doc.sessionStatus === 'logged_out' || doc.isLoggedIn === false || isLoggedOutByTimestamp;
+  const isExplicitlyLoggedOut = doc.sessionStatus === 'logged_out' || doc.isLoggedIn === false || isLoggedOutByTimestamp || isHeartbeatStale;
   const isCurrentlyActive = (doc.sessionStatus === 'active' || doc.isLoggedIn === true) && !isExplicitlyLoggedOut;
 
   const sessionStatus: 'active' | 'logged_out' = isCurrentlyActive ? 'active' : 'logged_out';
@@ -65,19 +71,22 @@ function normalizeFirestoreUser(doc: any): User | null {
     lastLogout = null;
   }
 
-  return {
-    id: doc.id || (tenDigit ? `user_${tenDigit}` : `user_${Date.now()}`),
-    phone: formattedPhone,
-    name: name,
-    email: doc.email || '',
-    photoUrl: doc.photoUrl || doc.photoURL || `https://api.dicebear.com/7.x/avataaars/png?seed=${tenDigit || doc.id || 'user'}`,
-    district: doc.district || '',
-    taluka: doc.taluka || '',
-    createdAt: doc.createdAt || doc.created_at || new Date().toISOString(),
-    subscriptionStatus: doc.subscriptionStatus || doc.status || 'active',
-    planId: doc.planId || 'vip-annual',
-    planName: doc.planName || (doc.subscriptionStatus === 'active' ? 'VIP Annual Pass' : 'Standard Access'),
-    planExpiry: doc.planExpiry || doc.expiryDate || '2027-12-31T23:59:59Z',
+    const isPlanValid = doc.planExpiry ? new Date(doc.planExpiry).getTime() > Date.now() : true;
+    const subStatus: 'active' | 'free' | 'expired' = (doc.subscriptionStatus === 'active' || (isPlanValid && (doc.planId === 'vip-annual' || isCurrentlyActive))) ? 'active' : (doc.subscriptionStatus || 'free');
+
+    return {
+      id: doc.id || (tenDigit ? `user_${tenDigit}` : `user_${Date.now()}`),
+      phone: formattedPhone,
+      name: name,
+      email: doc.email || '',
+      photoUrl: doc.photoUrl || doc.photoURL || `https://api.dicebear.com/7.x/avataaars/png?seed=${tenDigit || doc.id || 'user'}`,
+      district: doc.district || '',
+      taluka: doc.taluka || '',
+      createdAt: doc.createdAt || doc.created_at || new Date().toISOString(),
+      subscriptionStatus: subStatus,
+      planId: doc.planId || 'vip-annual',
+      planName: doc.planName || (subStatus === 'active' ? 'VIP Annual Pass' : 'Standard Access'),
+      planExpiry: doc.planExpiry || doc.expiryDate || '2027-12-31T23:59:59Z',
     devices: devices,
     watchlist: Array.isArray(doc.watchlist) ? doc.watchlist : [],
     continueWatching: doc.continueWatching && typeof doc.continueWatching === 'object' ? doc.continueWatching : {},
@@ -86,6 +95,8 @@ function normalizeFirestoreUser(doc: any): User | null {
     lastLogin: lastLoginTime || new Date().toISOString(),
     loginTime: doc.loginTime || lastLoginTime || new Date().toISOString(),
     lastLogout: lastLogout || undefined,
+    lastHeartbeat: lastHeartbeatTime || undefined,
+    lastActive: doc.lastActive || undefined,
   };
 }
 
@@ -137,6 +148,8 @@ export async function GET() {
           devices: isLoggedOut ? [] : ((primary.devices && primary.devices.length > 0) ? primary.devices : secondary.devices),
           lastLogin: primary.lastLogin || secondary.lastLogin,
           lastLogout: isLoggedOut ? (primary.lastLogout || secondary.lastLogout || primary.lastLogin) : undefined,
+          lastHeartbeat: primary.lastHeartbeat || secondary.lastHeartbeat,
+          lastActive: primary.lastActive || secondary.lastActive,
           createdAt: secondary.createdAt && new Date(secondary.createdAt) < new Date(primary.createdAt) ? secondary.createdAt : primary.createdAt,
         };
         userMap.set(phoneKey, merged);
@@ -152,22 +165,23 @@ export async function GET() {
       return timeB - timeA;
     });
 
-    // SINGLE ACTIVE USER POLICY: Whichever phone number logged in most recently and is active,
-    // ONLY that number is shown as Active. All other numbers are strictly shown as Logged Out.
-    const activeCandidates = rawList.filter(u => u.isLoggedIn && u.sessionStatus === 'active');
-    const singleActiveUser = activeCandidates.length > 0 ? activeCandidates[0] : null;
-
     const users = rawList.map(u => {
       const uDigits = u.phone.replace(/\D/g, '').slice(-10);
-      const activeDigits = singleActiveUser ? singleActiveUser.phone.replace(/\D/g, '').slice(-10) : '';
-      const isTargetActive = singleActiveUser && (u.id === singleActiveUser.id || (uDigits && uDigits === activeDigits));
+      const isLoggedOutExplicit = u.sessionStatus === 'logged_out' || u.isLoggedIn === false;
+      const logoutTime = u.lastLogout ? new Date(u.lastLogout).getTime() : 0;
+      const loginTime = u.lastLogin ? new Date(u.lastLogin).getTime() : (u.loginTime ? new Date(u.loginTime).getTime() : 0);
+      const hasLoggedOutAfterLogin = logoutTime > 0 && loginTime > 0 && logoutTime > loginTime;
+      const hbTime = u.lastHeartbeat ? new Date(u.lastHeartbeat).getTime() : (u.lastActive ? new Date(u.lastActive).getTime() : 0);
+      const isHeartbeatStale = (hbTime > 0 && Date.now() - hbTime > 90_000) || (hbTime === 0 && loginTime > 0 && Date.now() - loginTime > 90_000);
 
-      if (isTargetActive) {
+      const isUserActive = !isLoggedOutExplicit && !hasLoggedOutAfterLogin && !isHeartbeatStale && (u.sessionStatus === 'active' || u.isLoggedIn === true);
+
+      if (isUserActive) {
         return {
           ...u,
           isLoggedIn: true,
           sessionStatus: 'active' as const,
-          devices: (u.devices && u.devices.length > 0) ? u.devices : [
+          devices: (Array.isArray(u.devices) && u.devices.length > 0) ? u.devices : [
             {
               deviceId: `android_${uDigits || u.id}`,
               platform: 'android',
@@ -188,29 +202,6 @@ export async function GET() {
         };
       }
     });
-
-    // Background sync to keep Firestore completely consistent with the single active user policy
-    if (singleActiveUser) {
-      (async () => {
-        for (const raw of rawUsers || []) {
-          const docId = String(raw.id || '');
-          if (docId !== singleActiveUser.id &&
-              !docId.startsWith('app_') &&
-              !docId.startsWith('perm_') &&
-              !docId.startsWith('user_admin')) {
-            if (raw.isLoggedIn === true || raw.sessionStatus === 'active') {
-              syncDocToFirestore('users', docId, {
-                ...raw,
-                isLoggedIn: false,
-                sessionStatus: 'logged_out',
-                devices: [],
-                lastLogout: new Date().toISOString(),
-              }).catch(() => {});
-            }
-          }
-        }
-      })().catch(() => {});
-    }
 
     return NextResponse.json({
       success: true,
@@ -270,6 +261,8 @@ export async function POST(req: NextRequest) {
         lastLogin: nowIso,
         loginTime: nowIso,
         lastLogout: null,
+        lastHeartbeat: nowIso,
+        lastActive: nowIso,
         devices: [
           {
             deviceId: `android_${cleanPhone || Date.now()}`,
@@ -285,29 +278,6 @@ export async function POST(req: NextRequest) {
 
       const synced = await syncDocToFirestore('users', userId, activatePayload);
 
-      // SINGLE ACTIVE USER POLICY: Deactivate all other users in Cloud Firestore
-      try {
-        const allUsers = await fetchDocsFromFirestore('users');
-        for (const other of allUsers || []) {
-          const otherId = String(other.id || '');
-          if (otherId !== userId &&
-              !otherId.startsWith('app_') &&
-              !otherId.startsWith('perm_') &&
-              !otherId.startsWith('user_admin')) {
-            if (other.isLoggedIn === true || other.sessionStatus === 'active') {
-              await syncDocToFirestore('users', otherId, {
-                ...other,
-                isLoggedIn: false,
-                sessionStatus: 'logged_out',
-                devices: [],
-                lastLogout: nowIso,
-              }).catch(() => {});
-            }
-          }
-        }
-      } catch (e) {
-        console.warn('Deactivating other users notice:', e);
-      }
 
       return NextResponse.json({
         success: synced,
@@ -351,29 +321,6 @@ export async function POST(req: NextRequest) {
 
     const synced = await syncDocToFirestore('users', userId, userPayload);
 
-    // SINGLE ACTIVE USER POLICY: Deactivate all other users in Cloud Firestore
-    try {
-      const allUsers = await fetchDocsFromFirestore('users');
-      for (const other of allUsers || []) {
-        const otherId = String(other.id || '');
-        if (otherId !== userId &&
-            !otherId.startsWith('app_') &&
-            !otherId.startsWith('perm_') &&
-            !otherId.startsWith('user_admin')) {
-          if (other.isLoggedIn === true || other.sessionStatus === 'active') {
-            await syncDocToFirestore('users', otherId, {
-              ...other,
-              isLoggedIn: false,
-              sessionStatus: 'logged_out',
-              devices: [],
-              lastLogout: nowIso,
-            }).catch(() => {});
-          }
-        }
-      }
-    } catch (e) {
-      console.warn('Deactivating other users notice:', e);
-    }
 
     return NextResponse.json({
       success: synced,

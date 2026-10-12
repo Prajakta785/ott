@@ -77,10 +77,17 @@ export default function DashboardPage() {
     loadData();
   }, []);
 
-  const activeSubsCount = subscriptions.filter(s => s.status === 'active').length || users.filter(u => u.subscriptionStatus === 'active').length;
-  const totalRevenue = subscriptions.filter(s => s.status === 'active').reduce((acc, s) => acc + (s.amount || 0), 0);
+  const activeSubs = users.filter(u => 
+    u.subscriptionStatus === 'active' || 
+    u.sessionStatus === 'active' || 
+    u.isLoggedIn || 
+    (u.planExpiry && new Date(u.planExpiry).getTime() > Date.now() && u.planId === 'vip-annual')
+  );
+  const activeSubsCount = Math.max(subscriptions.filter(s => s.status === 'active').length, activeSubs.length);
+  const subsRevenue = subscriptions.filter(s => s.status === 'active').reduce((acc, s) => acc + (s.amount || 0), 0);
+  const totalRevenue = subsRevenue;
   const totalViews = content.reduce((acc, c) => acc + (c.views || 0), 0);
-  const bandwidthGB = (totalViews * 0.45).toFixed(1);
+  const bandwidthGB = totalViews > 0 ? (totalViews * 0.45).toFixed(1) : '0.0';
 
   return (
     <div className="space-y-8 animate-in fade-in duration-300">
@@ -294,7 +301,7 @@ export default function DashboardPage() {
                     <td className="py-3.5 text-xs font-semibold text-[#7A6F68] capitalize">{item.type}</td>
                     <td className="py-3.5">
                       <div className="flex flex-wrap gap-1">
-                        {item.genres.slice(0, 2).map((g) => (
+                        {(Array.isArray(item.genres) ? item.genres : []).slice(0, 2).map((g) => (
                           <span key={g} className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#FAF7F2] text-[#2D2522] border border-[#E5DBCA]">
                             {g}
                           </span>

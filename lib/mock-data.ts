@@ -1,6 +1,6 @@
 import { AdminUser, Advertisement, Banner, BunnyConfig, CompanyInfo, ContentAnalytics, ContentCategory, ContentItem, Episode, Grievance, LiveChannel, NotificationItem, Plan, Season, Subscription, User } from './types';
 
-// Default Authorized Administrators for all 7 Roles
+// Default Authorized Administrators - Only Super Admin
 export const initialAdmins: AdminUser[] = [
   {
     uid: 'admin-super-01',
@@ -9,54 +9,6 @@ export const initialAdmins: AdminUser[] = [
     role: 'superadmin',
     createdAt: '2026-09-29T10:00:00.000Z',
     lastLogin: new Date().toISOString(),
-  },
-  {
-    uid: 'admin-news-02',
-    email: 'news.editor@graminbharat.tv',
-    name: 'Ramesh Pawar (बातम्या संपादक)',
-    role: 'news_editor',
-    createdAt: '2026-09-30T11:30:00.000Z',
-    lastLogin: '2026-10-02T16:20:00.000Z',
-  },
-  {
-    uid: 'admin-content-03',
-    email: 'content.manager@graminbharat.tv',
-    name: 'Priya Sharma (कंटेंट मॅनेजर)',
-    role: 'content_manager',
-    createdAt: '2026-10-01T09:15:00.000Z',
-    lastLogin: '2026-10-03T12:45:00.000Z',
-  },
-  {
-    uid: 'admin-video-04',
-    email: 'video.manager@graminbharat.tv',
-    name: 'Amit Deshmukh (व्हिडिओ मॅनेजर)',
-    role: 'video_manager',
-    createdAt: '2026-10-01T14:00:00.000Z',
-    lastLogin: '2026-10-03T14:10:00.000Z',
-  },
-  {
-    uid: 'admin-reporter-05',
-    email: 'reporter@graminbharat.tv',
-    name: 'Rahul Shinde (फील्ड वार्ताहर)',
-    role: 'reporter',
-    createdAt: '2026-10-02T10:00:00.000Z',
-    lastLogin: '2026-10-03T15:30:00.000Z',
-  },
-  {
-    uid: 'admin-ads-06',
-    email: 'ads.manager@graminbharat.tv',
-    name: 'Sunita Jadhav (जाहिरात व्यवस्थापक)',
-    role: 'advertisement_manager',
-    createdAt: '2026-10-02T13:45:00.000Z',
-    lastLogin: '2026-10-03T11:20:00.000Z',
-  },
-  {
-    uid: 'admin-finance-07',
-    email: 'finance.manager@graminbharat.tv',
-    name: 'Mahesh Patil (वित्त व्यवस्थापक)',
-    role: 'finance_manager',
-    createdAt: '2026-10-02T15:00:00.000Z',
-    lastLogin: '2026-10-03T16:00:00.000Z',
   },
 ];
 

@@ -37,17 +37,15 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const defaultAdmin = initialAdmins[0];
-  const [user, setUser] = useState<AdminUser | null>(defaultAdmin);
-  const [isSuperAdminState, setIsSuperAdminState] = useState<boolean>(true);
-  const [isAuthLoaded, setIsAuthLoaded] = useState<boolean>(true);
+  const [user, setUser] = useState<AdminUser | null>(null);
+  const [isSuperAdminState, setIsSuperAdminState] = useState<boolean>(false);
+  const [isAuthLoaded, setIsAuthLoaded] = useState<boolean>(false);
   const [requiresTwoFactor, setRequiresTwoFactor] = useState(false);
   const [twoFactorEmail, setTwoFactorEmail] = useState<string | null>(null);
 
   useEffect(() => {
     // Check if user is stored in session
     try {
-      localStorage.removeItem('ott_admin_explicit_logout');
       const stored = localStorage.getItem('ott_admin_session_user');
       const isMasterSuper = localStorage.getItem('ott_admin_master_super');
       if (stored) {
@@ -56,14 +54,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const isSuper = parsed.role === 'superadmin' || parsed.email?.toLowerCase().includes('admin') || isMasterSuper === 'true';
         setIsSuperAdminState(isSuper);
       } else {
-        // Auto-login default Super Admin so console loads smoothly without getting trapped
-        const defaultAdmin = initialAdmins[0];
-        setUser(defaultAdmin);
-        setIsSuperAdminState(true);
-        localStorage.setItem('ott_admin_session_user', JSON.stringify(defaultAdmin));
-        localStorage.setItem('ott_admin_master_super', 'true');
+        setUser(null);
+        setIsSuperAdminState(false);
       }
-    } catch {}
+    } catch {
+      setUser(null);
+      setIsSuperAdminState(false);
+    }
     setIsAuthLoaded(true);
 
     // Sign into Firebase Auth client for admin Firestore privileges
@@ -162,7 +159,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       localStorage.removeItem('ott_admin_session_user');
       localStorage.removeItem('ott_admin_master_super');
-      localStorage.removeItem('ott_admin_explicit_logout');
+      localStorage.setItem('ott_admin_explicit_logout', 'true');
     } catch {}
     if (typeof window !== 'undefined') {
       window.location.replace('/login');

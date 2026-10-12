@@ -129,7 +129,7 @@ export default function NewsCMSPage() {
   const loadNews = async () => {
     setLoading(true);
     const content = await firestoreService.getContent();
-    setNewsList(content.filter(c => c.type === 'news' || c.genres.includes('News')));
+    setNewsList(content.filter(c => c.type === 'news' || (Array.isArray(c.genres) && c.genres.includes('News')) || c.category === 'news' || c.category === 'News'));
     setLoading(false);
   };
 

@@ -26,22 +26,30 @@ export default function DashboardLayout({
     setIsMobileSidebarOpen(false);
   }, [pathname]);
 
-  // Auto-authenticate as Super Admin if ever unauthenticated
+  // Redirect to login if unauthenticated
   React.useEffect(() => {
-    if (!isAuthenticated) {
-      login('admin@graminbharat.tv', 'admin123').catch(() => {});
+    if (isAuthLoaded && !isAuthenticated) {
+      router.push('/login');
     }
-  }, [isAuthenticated, login]);
+  }, [isAuthLoaded, isAuthenticated, router]);
 
   // Direct URL Access Control - Super Admin has unconditional full access to everything
   const isAllowed = isSuperAdmin || role === 'superadmin' || hasAccessTo(pathname);
 
   const bottomNavItems = [
     { name: lang === 'mr' ? 'डॅशबोर्ड' : lang === 'hi' ? 'डैशबोर्ड' : 'Home', href: '/admin', icon: LayoutDashboard },
-    { name: lang === 'mr' ? 'थेट टीव्ही' : lang === 'hi' ? 'लाइव टीवी' : 'Live', href: '/admin/live-tv', icon: Radio },
+    { name: lang === 'mr' ? 'थेट टीव्ही' : lang === 'hi' ? 'लाइव टीवी' : 'Live', href: '/admin/live', icon: Radio },
     { name: lang === 'mr' ? 'बातम्या' : lang === 'hi' ? 'समाचार' : 'News', href: '/admin/news', icon: Newspaper },
     { name: lang === 'mr' ? 'चित्रपट' : lang === 'hi' ? 'फ़िल्में' : 'Movies', href: '/admin/movies', icon: Film },
-  ].filter(item => isSuperAdmin || role === 'superadmin' || hasAccessTo(item.href));
+  ];
+
+  if (!isAuthLoaded || !isAuthenticated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="w-8 h-8 border-3 border-[#D97706] border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen overflow-hidden bg-background text-[#2D2522]">
@@ -102,29 +110,29 @@ export default function DashboardLayout({
         </main>
       </div>
 
-      {/* Mobile Bottom Navigation Bar (phones < 640px) */}
-      <nav className="sm:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#FAF7F2]/95 backdrop-blur-md border-t border-[#E5DBCA] px-2 py-1 flex items-center justify-around shadow-lg">
+      {/* Mobile Floating App-Style Navigation Bar (phones < 640px) */}
+      <nav className="sm:hidden fixed bottom-3 left-3 right-3 z-40 bg-white/95 backdrop-blur-xl border border-[#E5DBCA] rounded-2xl px-2 py-1.5 flex items-center justify-around shadow-[0_10px_30px_-5px_rgba(45,37,34,0.15)] ring-1 ring-black/5">
         {bottomNavItems.map((item) => {
-          const isActive = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
+          const isActive = pathname === item.href || (item.href !== '/admin' && item.href !== '/ott' && pathname.startsWith(item.href));
           const Icon = item.icon;
           return (
             <Link
               key={item.href}
               href={item.href}
               className={cn(
-                'flex flex-col items-center justify-center py-1.5 px-2 rounded-xl transition-all cursor-pointer min-w-[56px]',
+                'flex flex-col items-center justify-center py-1 px-1.5 rounded-xl transition-all cursor-pointer flex-1 min-w-0',
                 isActive
                   ? 'text-[#166534] font-black'
-                  : 'text-[#6B7280] hover:text-[#0F172A] font-semibold'
+                  : 'text-[#64748B] hover:text-[#0F172A] font-semibold'
               )}
             >
               <div className={cn(
                 'p-1 rounded-lg transition-colors',
                 isActive ? 'bg-[#EAF5EF] text-[#166534]' : ''
               )}>
-                <Icon className="w-5 h-5" />
+                <Icon className="w-4 h-4" />
               </div>
-              <span className="text-[10px] tracking-tight mt-0.5">{item.name}</span>
+              <span className="text-[9.5px] tracking-tight mt-0.5 truncate">{item.name}</span>
             </Link>
           );
         })}
@@ -133,17 +141,17 @@ export default function DashboardLayout({
           type="button"
           onClick={() => setIsMobileSidebarOpen(true)}
           className={cn(
-            'flex flex-col items-center justify-center py-1.5 px-2 rounded-xl transition-all cursor-pointer min-w-[56px]',
-            isMobileSidebarOpen ? 'text-[#166534] font-black' : 'text-[#6B7280] hover:text-[#0F172A] font-semibold'
+            'flex flex-col items-center justify-center py-1 px-1.5 rounded-xl transition-all cursor-pointer flex-1 min-w-0',
+            isMobileSidebarOpen ? 'text-[#166534] font-black' : 'text-[#64748B] hover:text-[#0F172A] font-semibold'
           )}
         >
           <div className={cn(
             'p-1 rounded-lg transition-colors',
             isMobileSidebarOpen ? 'bg-[#EAF5EF] text-[#166534]' : ''
           )}>
-            <Menu className="w-5 h-5" />
+            <Menu className="w-4 h-4" />
           </div>
-          <span className="text-[10px] tracking-tight mt-0.5">{lang === 'mr' ? 'सर्व मेनू' : lang === 'hi' ? 'सभी मेनू' : 'Menu'}</span>
+          <span className="text-[9.5px] tracking-tight mt-0.5 truncate">{lang === 'mr' ? 'सर्व मेनू' : lang === 'hi' ? 'सभी मेनू' : 'Menu'}</span>
         </button>
       </nav>
     </div>

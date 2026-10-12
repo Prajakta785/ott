@@ -92,13 +92,13 @@ export default function MoviesPage() {
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
       result = result.filter(m => 
-        m.title.toLowerCase().includes(term) ||
-        m.director.toLowerCase().includes(term) ||
-        m.cast.some(c => c.toLowerCase().includes(term))
+        (m.title || '').toLowerCase().includes(term) ||
+        (m.director || '').toLowerCase().includes(term) ||
+        (m.cast || []).some(c => (c || '').toLowerCase().includes(term))
       );
     }
     if (selectedGenre !== 'all') {
-      result = result.filter(m => m.genres.includes(selectedGenre));
+      result = result.filter(m => (m.genres || []).includes(selectedGenre));
     }
     if (selectedStatus !== 'all') {
       result = result.filter(m => m.status === selectedStatus);

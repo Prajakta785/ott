@@ -234,7 +234,16 @@ export default function AdminsPage() {
   const loadAdmins = async () => {
     setLoading(true);
     const list = await firestoreService.getAdmins();
-    setAdmins(list);
+    const dummyEmails = new Set([
+      'news.editor@graminbharat.tv',
+      'content.manager@graminbharat.tv',
+      'video.manager@graminbharat.tv',
+      'reporter@graminbharat.tv',
+      'ads.manager@graminbharat.tv',
+      'finance.manager@graminbharat.tv',
+    ]);
+    const filtered = list.filter(a => !dummyEmails.has(a.email?.toLowerCase()));
+    setAdmins(filtered);
     setLoading(false);
   };
 
@@ -342,7 +351,7 @@ export default function AdminsPage() {
         </div>
       )}
 
-      {/* Role Access Summary Cards (कोणा कोणाला ॲक्सेस दिला आहे याचा आढावा) */}
+      {/* Role Access Summary Cards (सक्रिय प्रशासक ॲक्सेस सारांश) */}
       <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-luxury space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -352,12 +361,14 @@ export default function AdminsPage() {
             </h2>
           </div>
           <span className="text-[11px] font-bold text-slate-500">
-            {lang === 'mr' ? `एकूण ७ प्रशासकीय भूमिका` : `7 RBAC Roles`}
+            {lang === 'mr' ? `${admins.length} सक्रिय प्रशासक` : `${admins.length} Active Admin`}
           </span>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          {(['superadmin', 'news_editor', 'content_manager', 'video_manager', 'reporter', 'advertisement_manager', 'finance_manager'] as AdminRole[]).map((r) => {
+          {(['superadmin', 'news_editor', 'content_manager', 'video_manager', 'reporter', 'advertisement_manager', 'finance_manager'] as AdminRole[])
+            .filter((r) => r === 'superadmin' || getRoleCount(r) > 0)
+            .map((r) => {
             const roleInfo = ROLE_ACCESS_DETAILS[r];
             const count = getRoleCount(r);
             return (
@@ -438,7 +449,80 @@ export default function AdminsPage() {
           </span>
         </div>
 
-        <div className="overflow-x-auto">
+        {/* Mobile View: App-Style Admin Cards (phones & tablets < 768px) */}
+        <div className="grid grid-cols-1 gap-3.5 md:hidden">
+          {admins.map((adm) => {
+            const roleDetails = ROLE_ACCESS_DETAILS[adm.role] || ROLE_ACCESS_DETAILS.superadmin;
+            return (
+              <div 
+                key={`mob-${adm.uid}`}
+                className="p-4 rounded-2xl bg-[#FAF7F2]/60 border border-slate-200 space-y-3 shadow-xs"
+              >
+                {/* Header Profile */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-amber-500 to-rose-600 border border-slate-200 flex items-center justify-center font-bold text-sm text-white uppercase overflow-hidden shrink-0 shadow-xs">
+                      {adm.photoUrl ? (
+                        <img src={adm.photoUrl} alt={adm.name} className="w-full h-full object-cover" />
+                      ) : (
+                        adm.name.charAt(0)
+                      )}
+                    </div>
+                    <div>
+                      <p className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
+                        {adm.name}
+                        {adm.uid === currentAuthUser?.uid && (
+                          <span className="text-[10px] bg-emerald-50 text-emerald-800 border border-emerald-200 px-1.5 py-0.2 rounded-full font-bold">You</span>
+                        )}
+                      </p>
+                      <span className={`text-[10.5px] font-bold px-2 py-0.5 rounded-md border mt-0.5 inline-block ${roleDetails.badgeColor}`}>
+                        {roleLabels[adm.role] || adm.role}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Email & Last Active */}
+                <div className="bg-white p-2.5 rounded-xl border border-slate-100 space-y-1 text-xs">
+                  <p className="font-mono text-slate-700 text-xs truncate">✉️ {adm.email}</p>
+                  <p className="text-[11px] text-slate-400">🕒 {adm.lastLogin ? formatDate(adm.lastLogin) : 'Never'}</p>
+                </div>
+
+                {/* Module access & Privileges */}
+                <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                  <span className="px-2 py-0.5 rounded-md font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                    👑 सर्व १६ मॉड्यूल्सचा पूर्ण ॲक्सेस
+                  </span>
+                  <span className="text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">✓ Publish</span>
+                  <span className="text-rose-700 font-bold bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200">✓ Delete</span>
+                  <span className="text-blue-700 font-bold bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200">✓ Manage</span>
+                </div>
+
+                {/* Mobile Action Buttons */}
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <button
+                    onClick={() => handleOpenRole(adm)}
+                    className="w-full py-2 rounded-xl bg-[#166534] hover:bg-[#14532D] text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs transition active:scale-95 cursor-pointer"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>{lang === 'mr' ? 'रोल उघडा' : 'Open Role'}</span>
+                  </button>
+
+                  <button
+                    onClick={() => setSelectedAdminForDetails(adm)}
+                    className="w-full py-2 rounded-xl bg-white hover:bg-slate-100 text-slate-800 border border-slate-200 font-bold text-xs flex items-center justify-center gap-1.5 shadow-2xs transition active:scale-95 cursor-pointer"
+                  >
+                    <Eye className="w-3.5 h-3.5 text-slate-500" />
+                    <span>{lang === 'mr' ? 'तपशील' : 'Details'}</span>
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Desktop View: Full Table (md and up) */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
             <thead className="text-[11px] uppercase tracking-wider text-slate-400 border-b border-slate-100 bg-slate-50/50">
               <tr>
@@ -606,7 +690,7 @@ export default function AdminsPage() {
                           <Eye className="w-3.5 h-3.5" />
                         </button>
 
-                        {canManageAdmins && adm.uid !== currentAuthUser?.uid && (
+                        {canManageAdmins && adm.uid !== currentAuthUser?.uid && adm.role !== 'superadmin' && (
                           <button
                             onClick={() => setAdminToDelete(adm)}
                             className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"

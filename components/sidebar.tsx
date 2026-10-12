@@ -2,7 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { 
   LayoutDashboard, 
   Film, 
@@ -46,6 +46,33 @@ export interface SidebarProps {
   onClose?: () => void;
 }
 
+// Watch search parameters and update parent query state reactively
+function SearchParamsWatcher({ onQueryChange }: { onQueryChange: (q: string) => void }) {
+  const searchParams = useSearchParams();
+  React.useEffect(() => {
+    const q = searchParams.toString() ? `?${searchParams.toString()}` : '';
+    onQueryChange(q);
+  }, [searchParams, onQueryChange]);
+  return null;
+}
+
+// Strict helper to catch any podcast category variants
+function isPodcastCategory(c: any): boolean {
+  if (!c) return false;
+  const nameEn = String(c.nameEnglish || '').toLowerCase().trim();
+  const nameMr = String(c.nameMarathi || '').toLowerCase().trim();
+  const slug = String(c.slug || '').toLowerCase().trim();
+  const id = String(c.id || '').toLowerCase().trim();
+  const type = String(c.type || '').toLowerCase().trim();
+  return (
+    nameEn.includes('podcast') ||
+    nameMr.includes('पॉडकास्ट') ||
+    slug.includes('podcast') ||
+    id.includes('podcast') ||
+    type === 'podcast'
+  );
+}
+
 // Custom silhouette map icon for Namdar Maharashtra
 function MaharashtraIcon({ className }: { className?: string }) {
   return (
@@ -78,31 +105,59 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const [isMounted, setIsMounted] = React.useState(false);
   const [dynamicCategories, setDynamicCategories] = React.useState<ContentCategory[]>([]);
   const [currentQuery, setCurrentQuery] = React.useState('');
+  const [optimisticHref, setOptimisticHref] = React.useState<string | null>(null);
 
+  // Synchronize and reset optimistic state when navigation completes
+  React.useEffect(() => {
+    setOptimisticHref(null);
+  }, [pathname, currentQuery]);
+
+  // Cleanse local caches and listen to browser navigation
   React.useEffect(() => {
     setIsMounted(true);
     if (typeof window !== 'undefined') {
       setCurrentQuery(window.location.search);
+      const onPopState = () => setCurrentQuery(window.location.search);
+      window.addEventListener('popstate', onPopState);
+
+      // Cleanse legacy and cached keys from any podcast entries
+      const purgeKeys = [
+        'ott_admin_categories_v12_wiped',
+        'ott_categories',
+        'ott_admin_categories',
+      ];
+      purgeKeys.forEach(k => {
+        try {
+          const raw = localStorage.getItem(k);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) {
+              const cleaned = parsed.filter(c => !isPodcastCategory(c));
+              localStorage.setItem(k, JSON.stringify(cleaned));
+            }
+          }
+        } catch {}
+      });
+
       try {
         const saved = localStorage.getItem('ott_admin_categories_v12_wiped');
         if (saved) {
           const parsed = JSON.parse(saved);
           if (Array.isArray(parsed)) {
-            const deletedIds = ['cat-podcast-mv1wwjtt', 'cat-dram-mv1y46sk', 'cat-podcast'];
-            const filtered = parsed.filter(c => !deletedIds.includes(c.id));
+            const filtered = parsed.filter(c => !isPodcastCategory(c));
             setDynamicCategories(filtered);
-            localStorage.setItem('ott_admin_categories_v12_wiped', JSON.stringify(filtered));
           }
         }
       } catch {}
+
+      return () => window.removeEventListener('popstate', onPopState);
     }
-  }, [pathname]);
+  }, []);
 
   const loadCategories = React.useCallback(() => {
     firestoreService.getCategories().then(cats => {
       if (Array.isArray(cats)) {
-        const deletedIds = ['cat-podcast-mv1wwjtt', 'cat-dram-mv1y46sk', 'cat-podcast'];
-        const filtered = cats.filter(c => !deletedIds.includes(c.id));
+        const filtered = cats.filter(c => !isPodcastCategory(c));
         setDynamicCategories(filtered);
         try {
           localStorage.setItem('ott_admin_categories_v12_wiped', JSON.stringify(filtered));
@@ -300,8 +355,9 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   ]);
   const customNavItems = isMounted ? dynamicCategories
     .filter(c => {
-      const lowerName = c.nameEnglish.toLowerCase().trim();
-      if (lowerName === 'all' || existingNames.has(lowerName)) return false;
+      if (isPodcastCategory(c)) return false;
+      const lowerName = String(c.nameEnglish || '').toLowerCase().trim();
+      if (!lowerName || lowerName === 'all' || existingNames.has(lowerName)) return false;
       existingNames.add(lowerName); // Add to set to prevent duplicates in customNavItems
       return true;
     })
@@ -355,13 +411,60 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     ? operationsNavigation 
     : operationsNavigation.filter(item => checkRolePermission(role, item.href));
 
+  const isItemActive = (href: string, name: string) => {
+    // 1. Optimistic active selection on immediate user click (0ms response)
+    if (optimisticHref !== null) {
+      return optimisticHref === href;
+    }
+
+    // 2. Exact match with query
+    const currentFullPath = pathname + (currentQuery || '');
+    if (currentFullPath === href) return true;
+
+    // 3. Handling /admin/media routes with category param
+    if (pathname === '/admin/media') {
+      const urlParams = new URLSearchParams(currentQuery || '');
+      const catParam = urlParams.get('category');
+
+      if (href.startsWith('/admin/media')) {
+        const hrefQuery = href.includes('?') ? href.split('?')[1] : '';
+        const hrefParams = new URLSearchParams(hrefQuery);
+        const hrefCat = hrefParams.get('category');
+
+        if (hrefCat && catParam) {
+          return hrefCat.toLowerCase().trim() === catParam.toLowerCase().trim();
+        }
+        // Default category on /admin/media when no param is in URL: Namdar Maharashtra
+        if (!catParam && (name === 'Namdar Maharashtra' || name === 'Nammad Maharashtra')) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    // 4. Exact pathname match for other routes (e.g. /admin, /admin/live-tv, /admin/news, /admin/movies)
+    if (pathname === href) return true;
+
+    // 5. Prefix match for sub-paths (except root /admin and /admin/media)
+    if (href !== '/admin' && href !== '/admin/media' && pathname.startsWith(href)) {
+      return true;
+    }
+
+    return false;
+  };
+
   const renderContent = (isMobileDrawer: boolean = false) => (
-    <>
+    <div className="flex flex-col h-full overflow-y-auto">
       {/* Brand Header */}
-      <div className="p-4 sm:p-5 border-b border-[#E5DBCA] bg-[#FAF7F2] flex items-center justify-between">
+      <div className="p-4 sm:p-5 border-b border-[#E5DBCA] bg-[#FAF7F2] flex items-center justify-between shrink-0">
         <Link 
           href="/admin" 
-          onClick={() => isMobileDrawer && onClose?.()}
+          prefetch={true}
+          onClick={() => {
+            setOptimisticHref('/admin');
+            setCurrentQuery('');
+            if (isMobileDrawer) onClose?.();
+          }}
           className="flex items-center group flex-1"
         >
           <div className="overflow-hidden flex-1 flex items-center">
@@ -433,36 +536,26 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
 
 
       {/* Navigation Links - Filtered by Role */}
-      <nav className="flex-1 px-3 py-3 space-y-1 overflow-y-auto no-scrollbar">
+      <nav className="flex-1 px-3 py-3 space-y-1">
         {visibleMediaNav.length > 0 && (
           <>
-            {/* OTT Media Section Header with Quick "+ Add" Option */}
-            <div className="px-3 pb-2 flex items-center justify-between relative" ref={addMediaRef}>
-              <span className="text-[10px] font-black uppercase tracking-wider text-[#374151]">
-                {t('sectionMedia')}
-              </span>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setIsAddCategoryModalOpen(true);
-                }}
-                className="flex items-center gap-1 px-2.5 py-1 rounded-xl text-[10px] font-bold text-amber-900 bg-amber-100 hover:bg-amber-200 border border-amber-300 transition-all cursor-pointer shadow-xs active:scale-95"
-                title={lang === 'mr' ? 'नवीन कॅटेगरी जोडा' : 'Add Category'}
-              >
-                <Plus className="w-3 h-3 stroke-[2.5]" />
-                <span>{lang === 'mr' ? '+ कॅटेगरी' : '+ Category'}</span>
-              </button>
+            {/* OTT Media Section Header */}
+            <div className="px-3 pb-2 text-[10px] font-black uppercase tracking-wider text-[#374151]">
+              {t('sectionMedia')}
             </div>
 
             {/* Primary Dashboard Link - Exactly at position in user image */}
             <Link
               href="/admin"
-              onClick={() => isMobileDrawer && onClose?.()}
+              prefetch={true}
+              onClick={() => {
+                setOptimisticHref('/admin');
+                setCurrentQuery('');
+                if (isMobileDrawer) onClose?.();
+              }}
               className={cn(
                 'flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-xs transition-all group cursor-pointer active:scale-[0.98] mb-1',
-                pathname === '/admin'
+                isItemActive('/admin', 'Dashboard')
                   ? 'bg-white text-[#0F172A] font-black shadow-md border border-white/50'
                   : 'text-[#0F172A] hover:text-black hover:bg-white border border-transparent font-bold'
               )}
@@ -471,31 +564,34 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
                 <LayoutDashboard
                   className={cn(
                     'w-4 h-4 transition-colors',
-                    pathname === '/admin' ? 'text-black' : 'text-black group-hover:text-black'
+                    isItemActive('/admin', 'Dashboard') ? 'text-black' : 'text-black group-hover:text-black'
                   )}
                 />
                 <span>{lang === 'mr' ? 'डॅशबोर्ड' : 'Dashboard'}</span>
               </div>
             </Link>
 
-            {/* Media navigation items - Matches Image 1 */}
+            {/* Media navigation items */}
             {visibleMediaNav.map((item) => {
-              const isMediaRoute = pathname === '/admin/media';
-              const queryMatch = isMediaRoute && currentQuery.includes(encodeURIComponent(item.name).replace(/%20/g, '+'));
-              const queryExactMatch = isMediaRoute && currentQuery.includes(encodeURIComponent(item.name));
-              const isActive = (pathname === item.href) || 
-                (queryMatch || queryExactMatch) ||
-                (item.href !== '/admin' && item.href !== '/admin/media' && pathname.startsWith(item.href));
-              
+              const active = isItemActive(item.href, item.name);
               const Icon = item.icon;
               return (
                 <Link
                   key={item.name}
                   href={item.href}
-                  onClick={() => isMobileDrawer && onClose?.()}
+                  prefetch={true}
+                  onClick={() => {
+                    setOptimisticHref(item.href);
+                    if (item.href.includes('?')) {
+                      setCurrentQuery('?' + item.href.split('?')[1]);
+                    } else {
+                      setCurrentQuery('');
+                    }
+                    if (isMobileDrawer) onClose?.();
+                  }}
                   className={cn(
                     'flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-xs transition-all group cursor-pointer active:scale-[0.98]',
-                    isActive
+                    active
                       ? 'bg-white text-[#0F172A] font-black shadow-md border border-white/50'
                       : 'text-[#0F172A] hover:text-black hover:bg-white border border-transparent font-bold'
                   )}
@@ -504,7 +600,7 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
                     <Icon
                       className={cn(
                         'w-4 h-4 transition-colors',
-                        isActive ? 'text-black' : 'text-black'
+                        active ? 'text-black' : 'text-black'
                       )}
                     />
                     <span>{getMediaNavName(item.name)}</span>
@@ -533,23 +629,6 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
               );
             })}
 
-            {/* Quick "+ Add Category" button in Media List */}
-            <button
-              type="button"
-              onClick={() => {
-                if (isMobileDrawer) onClose?.();
-                setIsAddCategoryModalOpen(true);
-              }}
-              className="w-full flex items-center justify-between px-3.5 py-2 rounded-2xl text-xs font-bold text-amber-800 hover:text-amber-900 bg-amber-50/70 hover:bg-amber-100/90 border border-amber-200/80 transition-all cursor-pointer active:scale-[0.98] mt-1.5"
-            >
-              <div className="flex items-center gap-2.5">
-                <Plus className="w-4 h-4 text-amber-700 stroke-[2.5]" />
-                <span>{lang === 'mr' ? '+ नवीन कॅटेगरी जोडा' : lang === 'hi' ? '+ नई श्रेणी जोड़ें' : '+ Add Category'}</span>
-              </div>
-              <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-amber-200/80 text-amber-900 border border-amber-300">
-                {lang === 'mr' ? 'नवीन' : 'New'}
-              </span>
-            </button>
           </>
         )}
 
@@ -562,20 +641,23 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
               <span className="text-[10px] font-black uppercase tracking-wider text-[#374151]">
                 {t('sectionMonetization')}
               </span>
-              
-
             </div>
             {visibleOperationsNav.map((item) => {
-              const isActive = pathname === item.href || (item.href !== '/admin' && pathname.startsWith(item.href));
+              const active = isItemActive(item.href, item.name);
               const Icon = item.icon;
               return (
                 <Link
                   key={item.name}
                   href={item.href}
-                  onClick={() => isMobileDrawer && onClose?.()}
+                  prefetch={true}
+                  onClick={() => {
+                    setOptimisticHref(item.href);
+                    setCurrentQuery('');
+                    if (isMobileDrawer) onClose?.();
+                  }}
                   className={cn(
                     'flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-xs transition-all group cursor-pointer active:scale-[0.98]',
-                    isActive
+                    active
                       ? 'bg-white text-[#0F172A] font-black shadow-md border border-white/50'
                       : 'text-[#0F172A] hover:text-black hover:bg-white border border-transparent font-bold'
                   )}
@@ -584,7 +666,7 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
                     <Icon
                       className={cn(
                         'w-4 h-4 transition-colors',
-                        isActive ? 'text-black' : 'text-black'
+                        active ? 'text-black' : 'text-black'
                       )}
                     />
                     <span>{item.name}</span>
@@ -607,7 +689,7 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
       </nav>
 
       {/* Cloud Status, Reset, Logout Footer */}
-      <div className="p-3 border-t border-[#E5DBCA] space-y-1 bg-[#FAF7F2]">
+      <div className="p-3 border-t border-[#E5DBCA] space-y-1 bg-[#FAF7F2] shrink-0 mt-auto pb-10">
         <div className="px-3 py-1 flex items-center justify-between text-[11px] text-[#7A6F68]">
           <span className="flex items-center gap-1.5 font-bold">
             <span className={cn(
@@ -644,13 +726,17 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
           <span>{lang === 'mr' ? 'लॉगआउट' : lang === 'hi' ? 'लॉगआउट' : 'Sign Out'}</span>
         </button>
       </div>
-    </>
+    </div>
   );
 
   return (
     <>
+      <React.Suspense fallback={null}>
+        <SearchParamsWatcher onQueryChange={setCurrentQuery} />
+      </React.Suspense>
+
       {/* Desktop Persistent Sidebar */}
-      <aside className="w-64 border-r border-[#E5DBCA] bg-[#FAF7F2] flex-col shrink-0 h-full hidden sm:flex select-none">
+      <aside className="w-64 border-r border-[#E5DBCA] bg-[#FAF7F2] flex flex-col shrink-0 h-full hidden sm:flex select-none overflow-hidden">
         {renderContent(false)}
       </aside>
 

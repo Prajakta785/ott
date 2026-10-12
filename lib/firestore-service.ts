@@ -48,7 +48,7 @@ import {
 } from './mock-data';
 
 const STORAGE_KEYS = {
-  CONTENT: 'ott_admin_content_v12_wiped',
+  CONTENT: 'ott_admin_content_v13_clean',
   LIVE_CHANNELS: 'ott_admin_live_channels_v12_wiped',
   ADS: 'ott_admin_ads_v12_wiped',
   SEASONS: 'ott_admin_seasons_v12_wiped',
@@ -57,11 +57,11 @@ const STORAGE_KEYS = {
   USERS: 'ott_admin_users_v12_wiped',
   SUBSCRIPTIONS: 'ott_admin_subs_v12_wiped',
   BANNERS: 'ott_admin_banners_v12_wiped',
-  ADMINS: 'ott_admin_admins_v12_wiped',
+  ADMINS: 'ott_admin_admins_v13_clean',
   BUNNY: 'ott_admin_bunny_v12_wiped',
   GRIEVANCES: 'ott_admin_grievances_v12_wiped',
   NOTIFICATIONS: 'ott_admin_notifications_v12_wiped',
-  CATEGORIES: 'ott_admin_categories_v12_wiped',
+  CATEGORIES: 'ott_admin_categories_v13_clean',
   COMPANY_INFO: 'ott_admin_company_info_v12_wiped',
   DELETED_CONTENT: 'ott_admin_deleted_content_v12_wiped',
 };
@@ -203,7 +203,12 @@ export class FirestoreService {
   async getContent(type?: ContentType): Promise<ContentItem[]> {
     const deletedIds = getLocalDeletedIds();
     const filterValidItems = (list: ContentItem[]) => {
-      return list.filter(c => {
+      return list
+        .map(c => ({
+          ...c,
+          genres: Array.isArray(c?.genres) ? c.genres : (c?.category ? [c.category] : []),
+        }))
+        .filter(c => {
         // Exclude logically deleted items
         if (deletedIds.includes(c.id)) return false;
         
@@ -213,6 +218,11 @@ export class FirestoreService {
         
         if (c.type === 'series') {
           if (c.id === 'ser-rang-majha-vegla' || (c.videoId && !isUUID && !isBunnyStorage)) return false;
+          return true;
+        }
+
+        // Podcasts & audio tracks are valid with audio/video URL or as published content
+        if (c.type === 'podcast' || c.type === 'audio') {
           return true;
         }
         
@@ -231,7 +241,18 @@ export class FirestoreService {
           const items = snap.docs.map(d => ({ id: d.id, ...d.data() } as ContentItem));
           const filtered = filterValidItems(items);
           if (filtered.length > 0) {
-            setLocalStore(STORAGE_KEYS.CONTENT, filtered);
+            if (!type) {
+              setLocalStore(STORAGE_KEYS.CONTENT, filtered);
+            } else {
+              const currentAll = getLocalStore<ContentItem[]>(STORAGE_KEYS.CONTENT, initialContent);
+              const merged = [...currentAll];
+              filtered.forEach(item => {
+                const idx = merged.findIndex(m => m.id === item.id);
+                if (idx >= 0) merged[idx] = item;
+                else merged.unshift(item);
+              });
+              setLocalStore(STORAGE_KEYS.CONTENT, merged);
+            }
             return type ? filtered.filter(c => c.type === type) : filtered;
           }
         }
@@ -250,7 +271,18 @@ export class FirestoreService {
           if (json.data && Array.isArray(json.data)) {
             all = filterValidItems(json.data);
             if (all.length > 0) {
-              setLocalStore(STORAGE_KEYS.CONTENT, all);
+              if (!type) {
+                setLocalStore(STORAGE_KEYS.CONTENT, all);
+              } else {
+                const currentAll = getLocalStore<ContentItem[]>(STORAGE_KEYS.CONTENT, initialContent);
+                const merged = [...currentAll];
+                all.forEach(item => {
+                  const idx = merged.findIndex(m => m.id === item.id);
+                  if (idx >= 0) merged[idx] = item;
+                  else merged.unshift(item);
+                });
+                setLocalStore(STORAGE_KEYS.CONTENT, merged);
+              }
               return type ? all.filter(c => c.type === type) : all;
             }
           }
@@ -281,9 +313,23 @@ export class FirestoreService {
               if (c.id === 'ser-rang-majha-vegla' || (c.videoId && !isUUID && !isBunnyStorage)) return false;
               return true;
             }
+            if (c.type === 'podcast' || c.type === 'audio') {
+              return true;
+            }
             return isUUID || isBunnyStorage;
           });
-          setLocalStore(STORAGE_KEYS.CONTENT, filtered);
+          if (!type) {
+            setLocalStore(STORAGE_KEYS.CONTENT, filtered);
+          } else {
+            const currentAll = getLocalStore<ContentItem[]>(STORAGE_KEYS.CONTENT, initialContent);
+            const merged = [...currentAll];
+            filtered.forEach(item => {
+              const idx = merged.findIndex(m => m.id === item.id);
+              if (idx >= 0) merged[idx] = item;
+              else merged.unshift(item);
+            });
+            setLocalStore(STORAGE_KEYS.CONTENT, merged);
+          }
           callback(type ? filtered.filter(c => c.type === type) : filtered);
         }, (err) => {
           console.warn('Real-time snapshot listener error:', err);
@@ -316,15 +362,21 @@ export class FirestoreService {
 
   async saveContent(item: ContentItem): Promise<ContentItem> {
     const now = new Date().toISOString();
+    const isPodcast = item.type === 'podcast' || item.type === 'audio';
+    const audioTrack = item.audioTrackUrl || item.audioUrl || (isPodcast ? (item.videoUrl || item.videoId || '') : '');
     const toSave: ContentItem = {
       ...item,
       updatedAt: now,
       createdAt: item.createdAt || now,
       status: item.status || 'published', // ensure published for Android app visibility
-      poster: item.poster || item.posterUrl || '',
-      posterUrl: item.posterUrl || item.poster || '',
-      banner: item.banner || item.bannerUrl || '',
-      bannerUrl: item.bannerUrl || item.banner || '',
+      poster: item.poster || item.posterUrl || (isPodcast ? 'https://images.unsplash.com/photo-1592982537447-7440770cbfc9?w=800' : ''),
+      posterUrl: item.posterUrl || item.poster || (isPodcast ? 'https://images.unsplash.com/photo-1592982537447-7440770cbfc9?w=800' : ''),
+      banner: item.banner || item.bannerUrl || item.poster || (isPodcast ? 'https://images.unsplash.com/photo-1592982537447-7440770cbfc9?w=1200' : ''),
+      bannerUrl: item.bannerUrl || item.banner || item.poster || (isPodcast ? 'https://images.unsplash.com/photo-1592982537447-7440770cbfc9?w=1200' : ''),
+      audioUrl: item.audioUrl || audioTrack,
+      audioTrackUrl: item.audioTrackUrl || audioTrack,
+      videoId: item.videoId || (isPodcast ? audioTrack : ''),
+      videoUrl: item.videoUrl || (isPodcast ? audioTrack : ''),
     };
 
     const all = getLocalStore<ContentItem[]>(STORAGE_KEYS.CONTENT, initialContent);
@@ -955,12 +1007,18 @@ export class FirestoreService {
       // Determine session liveness & logout state
       const lastLoginTime = u?.lastLogin || (Array.isArray(u?.devices) && u.devices.length > 0 ? u.devices[0].lastLogin : null) || u?.loginTime || u?.createdAt || null;
       const lastLogoutTime = u?.lastLogout || null;
+      const lastHeartbeatTime = u?.lastHeartbeat || u?.lastActive || null;
 
       const loginMs = lastLoginTime ? new Date(lastLoginTime).getTime() : 0;
       const logoutMs = lastLogoutTime ? new Date(lastLogoutTime).getTime() : 0;
+      const heartbeatMs = lastHeartbeatTime ? new Date(lastHeartbeatTime).getTime() : 0;
       const isLoggedOutByTimestamp = logoutMs > 0 && loginMs > 0 && logoutMs >= loginMs;
 
-      const isExplicitlyLoggedOut = u?.sessionStatus === 'logged_out' || u?.isLoggedIn === false || isLoggedOutByTimestamp;
+      // If app is closed/cleared, heartbeat stops. After 90s without ping, mark as logged out
+      const latestActivityMs = Math.max(heartbeatMs, loginMs);
+      const isHeartbeatStale = latestActivityMs > 0 && (Date.now() - latestActivityMs > 90_000);
+
+      const isExplicitlyLoggedOut = u?.sessionStatus === 'logged_out' || u?.isLoggedIn === false || isLoggedOutByTimestamp || isHeartbeatStale;
       const isCurrentlyActive = (u?.sessionStatus === 'active' || u?.isLoggedIn === true) && !isExplicitlyLoggedOut;
 
       const sessionStatus: 'active' | 'logged_out' = isCurrentlyActive ? 'active' : 'logged_out';
@@ -988,13 +1046,16 @@ export class FirestoreService {
         lastLogout = null;
       }
 
+      const isPlanValid = u?.planExpiry ? new Date(u.planExpiry).getTime() > Date.now() : true;
+      const subStatus: 'active' | 'free' | 'expired' = (u?.subscriptionStatus === 'active' || (isPlanValid && (u?.planId === 'vip-annual' || isCurrentlyActive))) ? 'active' : (u?.subscriptionStatus || 'free');
+
       return {
         ...u,
         id: u?.id || (tenDigit ? `user_${tenDigit}` : `user_${Date.now()}`),
         phone: formattedPhone,
         name: name,
-        subscriptionStatus: u?.subscriptionStatus || u?.status || 'active',
-        planName: u?.planName || (u?.subscriptionStatus === 'active' ? 'VIP Annual Pass' : 'Standard Access'),
+        subscriptionStatus: subStatus,
+        planName: u?.planName || (subStatus === 'active' ? 'VIP Annual Pass' : 'Standard Access'),
         devices: devices,
         watchlist: Array.isArray(u?.watchlist) ? u.watchlist : [],
         continueWatching: u?.continueWatching && typeof u.continueWatching === 'object' ? u.continueWatching : {},
@@ -1003,6 +1064,8 @@ export class FirestoreService {
         lastLogin: lastLoginTime || new Date().toISOString(),
         loginTime: u?.loginTime || lastLoginTime || new Date().toISOString(),
         lastLogout: lastLogout || undefined,
+        lastHeartbeat: lastHeartbeatTime || undefined,
+        lastActive: u?.lastActive || undefined,
       };
     };
 
@@ -1044,29 +1107,32 @@ export class FirestoreService {
             devices: isLoggedOut ? [] : ((primary.devices && primary.devices.length > 0) ? primary.devices : secondary.devices),
             lastLogin: primary.lastLogin || secondary.lastLogin,
             lastLogout: isLoggedOut ? (primary.lastLogout || secondary.lastLogout || primary.lastLogin) : undefined,
+            lastHeartbeat: primary.lastHeartbeat || secondary.lastHeartbeat,
+            lastActive: primary.lastActive || secondary.lastActive,
           };
           map.set(key, merged);
         }
       }
 
       const raw = Array.from(map.values());
-      // SINGLE ACTIVE USER POLICY: Whichever user is active and logged in most recently, ONLY that user is active
-      const activeCandidates = raw.filter(u => u.isLoggedIn && u.sessionStatus === 'active');
-      const singleActive = activeCandidates.length > 0
-        ? activeCandidates.sort((a, b) => new Date(b.lastLogin || b.createdAt || 0).getTime() - new Date(a.lastLogin || a.createdAt || 0).getTime())[0]
-        : null;
 
       return raw.map(u => {
         const uDigits = u.phone.replace(/\D/g, '').slice(-10);
-        const activeDigits = singleActive ? singleActive.phone.replace(/\D/g, '').slice(-10) : '';
-        const isTargetActive = singleActive && (u.id === singleActive.id || (uDigits && uDigits === activeDigits));
+        const isLoggedOutExplicit = u.sessionStatus === 'logged_out' || u.isLoggedIn === false;
+        const logoutTime = u.lastLogout ? new Date(u.lastLogout).getTime() : 0;
+        const loginTime = u.lastLogin ? new Date(u.lastLogin).getTime() : (u.loginTime ? new Date(u.loginTime).getTime() : 0);
+        const hasLoggedOutAfterLogin = logoutTime > 0 && loginTime > 0 && logoutTime > loginTime;
+        const hbTime = u.lastHeartbeat ? new Date(u.lastHeartbeat).getTime() : (u.lastActive ? new Date(u.lastActive).getTime() : 0);
+        const isHeartbeatStale = (hbTime > 0 && Date.now() - hbTime > 90_000) || (hbTime === 0 && loginTime > 0 && Date.now() - loginTime > 90_000);
 
-        if (isTargetActive) {
+        const isUserActive = !isLoggedOutExplicit && !hasLoggedOutAfterLogin && !isHeartbeatStale && (u.sessionStatus === 'active' || u.isLoggedIn === true);
+
+        if (isUserActive) {
           return {
             ...u,
             isLoggedIn: true,
             sessionStatus: 'active' as const,
-            devices: (u.devices && u.devices.length > 0) ? u.devices : [
+            devices: (Array.isArray(u.devices) && u.devices.length > 0) ? u.devices : [
               {
                 deviceId: `android_${uDigits || u.id}`,
                 platform: 'android',
@@ -1083,7 +1149,7 @@ export class FirestoreService {
             isLoggedIn: false,
             sessionStatus: 'logged_out' as const,
             devices: [],
-            lastLogout: u.lastLogout || u.lastLogin || u.createdAt,
+            lastLogout: u.lastLogout || u.lastLogin || u.createdAt || new Date().toISOString(),
           };
         }
       });
@@ -1225,6 +1291,8 @@ export class FirestoreService {
           isLoggedIn: true,
           sessionStatus: 'active',
           lastLogin: nowIso,
+          lastHeartbeat: nowIso,
+          lastActive: nowIso,
           devices: [
             {
               deviceId: `android_${cleanPhone}`,
@@ -1236,27 +1304,12 @@ export class FirestoreService {
           ],
         }, { merge: true });
 
-        // Deactivate other users in Firestore
-        const snap = await getDocs(collection(db, 'users'));
-        for (const d of snap.docs) {
-          if (d.id !== userId && !d.id.startsWith('app_') && !d.id.startsWith('perm_') && !d.id.startsWith('user_admin')) {
-            const data = d.data();
-            if (data.isLoggedIn === true || data.sessionStatus === 'active') {
-              setDoc(d.ref, {
-                isLoggedIn: false,
-                sessionStatus: 'logged_out',
-                devices: [],
-                lastLogout: nowIso,
-              }, { merge: true }).catch(() => {});
-            }
-          }
-        }
       } catch (e) {
         console.warn('activateUser Firestore notice:', e);
       }
     }
 
-    // Update local store: only cleanPhone is active, all others are logged out
+    // Update local store: activate target user
     const all = getLocalStore<User[]>(STORAGE_KEYS.USERS, []);
     const updated = all.map(u => {
       const uDigits = u.phone.replace(/\D/g, '').slice(-10);
@@ -1265,6 +1318,8 @@ export class FirestoreService {
           ...u,
           isLoggedIn: true,
           sessionStatus: 'active' as const,
+          lastHeartbeat: nowIso,
+          lastActive: nowIso,
           devices: [
             {
               deviceId: `android_${cleanPhone}`,
@@ -1278,13 +1333,7 @@ export class FirestoreService {
           lastLogout: undefined,
         };
       }
-      return {
-        ...u,
-        isLoggedIn: false,
-        sessionStatus: 'logged_out' as const,
-        devices: [],
-        lastLogout: u.lastLogout || nowIso,
-      };
+      return u;
     });
     setLocalStore(STORAGE_KEYS.USERS, updated);
   }
@@ -1421,6 +1470,31 @@ export class FirestoreService {
 
   /* ------------------- ADMINS & RBAC (Section 31) ------------------- */
   async getAdmins(): Promise<AdminUser[]> {
+    // Purge deprecated storage keys if present
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.removeItem('ott_admin_admins_v12_wiped');
+        localStorage.removeItem('ott_admin_admins_v11_clean');
+      } catch {}
+    }
+
+    const dummyEmails = new Set([
+      'news.editor@graminbharat.tv',
+      'content.manager@graminbharat.tv',
+      'video.manager@graminbharat.tv',
+      'reporter@graminbharat.tv',
+      'ads.manager@graminbharat.tv',
+      'finance.manager@graminbharat.tv',
+    ]);
+    const dummyUids = new Set([
+      'admin-news-02',
+      'admin-content-03',
+      'admin-video-04',
+      'admin-reporter-05',
+      'admin-ads-06',
+      'admin-finance-07',
+    ]);
+
     let list: AdminUser[] = [];
     if (this.useLive && db) {
       try {
@@ -1437,8 +1511,21 @@ export class FirestoreService {
       list = getLocalStore<AdminUser[]>(STORAGE_KEYS.ADMINS, initialAdmins);
     }
 
-    // Ensure all roles from initialAdmins are represented so user can see who has access to what
-    const merged = [...list];
+    // Filter out mock dummy admin records
+    const cleaned = list.filter(a => 
+      !dummyEmails.has(a.email?.toLowerCase()) && 
+      !dummyUids.has(a.uid)
+    );
+
+    // Delete dummy accounts from Firestore in background if present
+    if (this.useLive && db) {
+      const activeDb = db;
+      dummyUids.forEach((uid) => {
+        timeoutPromise(deleteDoc(doc(activeDb, 'admins', uid)), 2000).catch(() => {});
+      });
+    }
+
+    const merged = [...cleaned];
     for (const init of initialAdmins) {
       if (!merged.some(m => m.uid === init.uid || m.email.toLowerCase() === init.email.toLowerCase())) {
         merged.push(init);

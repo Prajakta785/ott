@@ -109,6 +109,15 @@ export default function PodcastsPage() {
 
   useEffect(() => {
     loadPodcasts();
+    const handleUpdate = () => {
+      loadPodcasts();
+    };
+    window.addEventListener('ott_content_updated', handleUpdate);
+    window.addEventListener('storage', handleUpdate);
+    return () => {
+      window.removeEventListener('ott_content_updated', handleUpdate);
+      window.removeEventListener('storage', handleUpdate);
+    };
   }, []);
 
   // Filter & Search Logic
@@ -270,11 +279,14 @@ export default function PodcastsPage() {
         audioUrl,
         audioTrackUrl: audioUrl,
         videoId: audioUrl, // Mirrored for unified players
+        videoUrl: audioUrl,
+        subCategory: 'पॉडकास्ट',
+        subCategories: ['पॉडकास्ट', 'Podcast'],
         poster: currentPodcast.poster || 'https://images.unsplash.com/photo-1590602847861-f357a9332bbc?w=800&auto=format&fit=crop&q=80',
         banner: currentPodcast.banner || currentPodcast.poster || '',
-        genres: currentPodcast.genres && currentPodcast.genres.length > 0 ? currentPodcast.genres : [podcastCategories[0]],
+        genres: Array.from(new Set(['पॉडकास्ट', 'Podcast', ...(currentPodcast.genres && currentPodcast.genres.length > 0 ? currentPodcast.genres : [podcastCategories[0]])])),
         language: currentPodcast.language && currentPodcast.language.length > 0 ? currentPodcast.language : [podcastLanguages[0]],
-        tags: currentPodcast.tags || ['पॉडकास्ट'],
+        tags: Array.from(new Set(['पॉडकास्ट', 'Podcast', 'ऑडिओ', ...(currentPodcast.tags || [])])),
         cast: hostName ? [hostName] : [],
         releaseDate: currentPodcast.releaseDate || new Date().toISOString().split('T')[0],
         duration: Number(currentPodcast.duration) || 1800,

@@ -54,7 +54,7 @@ export default function UsersPage() {
   const [isSaving, setIsSaving] = useState(false);
 
   // STRICT CLIENT-SIDE DEDUPLICATION HELPER: Guarantees no mobile number is ever rendered twice
-  // and guarantees SINGLE ACTIVE USER: ONLY the most recently logged-in active number is active, all others are logged out.
+  // and accurately detects Active (Online) and Logged Out status for each individual mobile number.
   const deduplicateUsersList = (list: User[]): User[] => {
     const map = new Map<string, User>();
     for (const u of list || []) {
@@ -85,28 +85,34 @@ export default function UsersPage() {
           devices: isLoggedOut ? [] : ((primary.devices && primary.devices.length > 0) ? primary.devices : secondary.devices),
           lastLogin: primary.lastLogin || secondary.lastLogin,
           lastLogout: isLoggedOut ? (primary.lastLogout || secondary.lastLogout || primary.lastLogin) : undefined,
+          lastHeartbeat: primary.lastHeartbeat || secondary.lastHeartbeat,
+          lastActive: primary.lastActive || secondary.lastActive,
         });
       }
     }
 
     const raw = Array.from(map.values());
-    // SINGLE ACTIVE USER POLICY: Whichever number logged in most recently and is active, ONLY that number is shown as Active!
-    const activeCandidates = raw.filter(u => u.isLoggedIn && u.sessionStatus === 'active');
-    const singleActive = activeCandidates.length > 0
-      ? activeCandidates.sort((a, b) => new Date(b.lastLogin || b.createdAt || 0).getTime() - new Date(a.lastLogin || a.createdAt || 0).getTime())[0]
-      : null;
 
     return raw.map(u => {
       const uDigits = u.phone.replace(/\D/g, '').slice(-10);
-      const activeDigits = singleActive ? singleActive.phone.replace(/\D/g, '').slice(-10) : '';
-      const isTargetActive = (singleActive && (u.id === singleActive.id || (uDigits && uDigits === activeDigits))) || uDigits === '9022705467';
+      const isLoggedOutExplicit = u.sessionStatus === 'logged_out' || u.isLoggedIn === false;
+      const logoutTime = u.lastLogout ? new Date(u.lastLogout).getTime() : 0;
+      const loginTime = u.lastLogin ? new Date(u.lastLogin).getTime() : (u.loginTime ? new Date(u.loginTime).getTime() : 0);
+      const hasLoggedOutAfterLogin = logoutTime > 0 && loginTime > 0 && logoutTime > loginTime;
+      const hbTime = u.lastHeartbeat ? new Date(u.lastHeartbeat).getTime() : (u.lastActive ? new Date(u.lastActive).getTime() : 0);
+      const isHeartbeatStale = (hbTime > 0 && Date.now() - hbTime > 90_000) || (hbTime === 0 && loginTime > 0 && Date.now() - loginTime > 90_000);
 
-      if (isTargetActive) {
+      const isUserActive = !isLoggedOutExplicit && !hasLoggedOutAfterLogin && !isHeartbeatStale && (u.sessionStatus === 'active' || u.isLoggedIn === true);
+      const isPlanValid = u.planExpiry ? new Date(u.planExpiry).getTime() > Date.now() : true;
+      const subStatus = (u.subscriptionStatus === 'active' || (isPlanValid && (u.planId === 'vip-annual' || isUserActive))) ? 'active' : (u.subscriptionStatus || 'free');
+
+      if (isUserActive) {
         return {
           ...u,
+          subscriptionStatus: subStatus,
           isLoggedIn: true,
           sessionStatus: 'active' as const,
-          devices: (u.devices && u.devices.length > 0) ? u.devices : [
+          devices: (Array.isArray(u.devices) && u.devices.length > 0) ? u.devices : [
             {
               deviceId: `android_${uDigits || u.id}`,
               platform: 'android',
@@ -123,7 +129,7 @@ export default function UsersPage() {
           isLoggedIn: false,
           sessionStatus: 'logged_out' as const,
           devices: [],
-          lastLogout: u.lastLogout || u.lastLogin || u.createdAt,
+          lastLogout: u.lastLogout || u.lastLogin || u.createdAt || new Date().toISOString(),
         };
       }
     });
@@ -247,7 +253,7 @@ export default function UsersPage() {
       const nowIso = new Date().toISOString();
       const targetDigits = user.phone.replace(/\D/g, '').slice(-10);
 
-      // Optimistic instant UI update: activate this user, deactivate all others!
+      // Optimistic instant UI update: activate this user
       setUsers(prev => prev.map(u => {
         const uDigits = u.phone.replace(/\D/g, '').slice(-10);
         if ((targetDigits && uDigits === targetDigits) || u.id === user.id) {
@@ -258,6 +264,8 @@ export default function UsersPage() {
             lastLogin: nowIso,
             loginTime: nowIso,
             lastLogout: undefined,
+            lastHeartbeat: nowIso,
+            lastActive: nowIso,
             devices: [
               {
                 deviceId: `android_${targetDigits || u.id}`,
@@ -268,15 +276,8 @@ export default function UsersPage() {
               }
             ],
           };
-        } else {
-          return {
-            ...u,
-            isLoggedIn: false,
-            sessionStatus: 'logged_out',
-            devices: [],
-            lastLogout: nowIso,
-          };
         }
+        return u;
       }));
 
       if (selectedUser) {
@@ -289,6 +290,8 @@ export default function UsersPage() {
             lastLogin: nowIso,
             loginTime: nowIso,
             lastLogout: undefined,
+            lastHeartbeat: nowIso,
+            lastActive: nowIso,
             devices: [
               {
                 deviceId: `android_${targetDigits || user.id}`,

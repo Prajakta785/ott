@@ -1,7 +1,5 @@
-'use client';
-
-import PublicWebsitePage from './website/page';
+import { redirect } from 'next/navigation';
 
 export default function HomePage() {
-  return <PublicWebsitePage />;
+  redirect('/admin');
 }

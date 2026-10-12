@@ -67,6 +67,8 @@ export interface ContentItem {
   taluka?: string;
   village?: string;
   subCategory?: string;
+  category?: string;
+  subCategories?: string[];
 
   // Live Stream Metadata (Section 3)
   isLive?: boolean;
@@ -255,6 +257,8 @@ export interface User {
   lastLogin?: string;
   loginTime?: string;
   lastLogout?: string;
+  lastHeartbeat?: string;
+  lastActive?: string;
   activeDurationText?: string;
   activeHours?: number;
 }

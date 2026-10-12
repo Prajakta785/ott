@@ -44,9 +44,9 @@ export async function GET(req: NextRequest) {
         return true;
       }
 
-      // If it's a podcast or audio, allow if it has audioUrl, audioTrackUrl, or valid stream
-      if (c.type === 'podcast' || c.type === 'audio') {
-        return !!(c.audioUrl || c.audioTrackUrl || isUUID || isBunnyStorage);
+      // Exclude podcast items completely
+      if (c.type === 'podcast' || c.id.startsWith('pod-') || String(c.title).toLowerCase().includes('podcast')) {
+        return false;
       }
       
       // For all other content (movies, news, shows), MUST have a valid Bunny video
@@ -98,20 +98,24 @@ export async function POST(req: NextRequest) {
     const finalEmbedUrl = isGuid ? `https://iframe.mediadelivery.net/embed/767488/${finalVideoId}?autoplay=true&preload=true` : (videoPlayback?.embedUrl || '');
 
     const contentType = body.type || body.contentType || 'movie';
+    const isPodcast = contentType === 'podcast' || contentType === 'audio';
+    const audioTrack = body.audioTrackUrl || body.audioUrl || (isPodcast ? (finalHlsUrl || finalVideoId) : '');
     const item: ContentItem = {
       ...body,
-      id: body.id || (contentType === 'series' ? 'ser-' : 'mov-') + Date.now().toString(36),
+      id: body.id || (contentType === 'series' ? 'ser-' : isPodcast ? 'pod-' : 'mov-') + Date.now().toString(36),
       type: contentType,
       status: body.status || 'published', // ensure published for Android app visibility
-      poster: body.poster || body.posterUrl || (isGuid ? `https://vz-92cc7e0f-cd7.b-cdn.net/${finalVideoId}/thumbnail.jpg` : ''),
-      posterUrl: body.posterUrl || body.poster || (isGuid ? `https://vz-92cc7e0f-cd7.b-cdn.net/${finalVideoId}/thumbnail.jpg` : ''),
-      banner: body.banner || body.bannerUrl || (isGuid ? `https://vz-92cc7e0f-cd7.b-cdn.net/${finalVideoId}/thumbnail.jpg` : ''),
-      bannerUrl: body.bannerUrl || body.banner || (isGuid ? `https://vz-92cc7e0f-cd7.b-cdn.net/${finalVideoId}/thumbnail.jpg` : ''),
-      duration: body.duration || body.durationMinutes || 0,
-      durationMinutes: body.durationMinutes || (body.duration ? (body.duration > 300 ? Math.floor(body.duration / 60) : body.duration) : 0),
-      videoId: finalVideoId,
-      videoUrl: finalHlsUrl,
-      hlsUrl: finalHlsUrl,
+      poster: body.poster || body.posterUrl || (isGuid ? `https://vz-92cc7e0f-cd7.b-cdn.net/${finalVideoId}/thumbnail.jpg` : (isPodcast ? 'https://images.unsplash.com/photo-1592982537447-7440770cbfc9?w=800' : '')),
+      posterUrl: body.posterUrl || body.poster || (isGuid ? `https://vz-92cc7e0f-cd7.b-cdn.net/${finalVideoId}/thumbnail.jpg` : (isPodcast ? 'https://images.unsplash.com/photo-1592982537447-7440770cbfc9?w=800' : '')),
+      banner: body.banner || body.bannerUrl || (isGuid ? `https://vz-92cc7e0f-cd7.b-cdn.net/${finalVideoId}/thumbnail.jpg` : (isPodcast ? 'https://images.unsplash.com/photo-1592982537447-7440770cbfc9?w=1200' : '')),
+      bannerUrl: body.bannerUrl || body.banner || (isGuid ? `https://vz-92cc7e0f-cd7.b-cdn.net/${finalVideoId}/thumbnail.jpg` : (isPodcast ? 'https://images.unsplash.com/photo-1592982537447-7440770cbfc9?w=1200' : '')),
+      duration: body.duration || body.durationMinutes || (isPodcast ? 1800 : 0),
+      durationMinutes: body.durationMinutes || (body.duration ? (body.duration > 300 ? Math.floor(body.duration / 60) : body.duration) : (isPodcast ? 30 : 0)),
+      videoId: finalVideoId || audioTrack,
+      videoUrl: finalHlsUrl || audioTrack,
+      audioUrl: audioTrack,
+      audioTrackUrl: audioTrack,
+      hlsUrl: finalHlsUrl || audioTrack,
       embedUrl: finalEmbedUrl,
       isFeatured: body.isFeatured !== undefined ? !!body.isFeatured : true,
     };

@@ -278,7 +278,7 @@ export function Header({ onToggleSidebar }: { onToggleSidebar?: () => void }) {
     </div>
 
       {/* Action Items */}
-      <div className="flex items-center gap-2.5">
+      <div className="flex items-center gap-1.5 sm:gap-2.5">
         {/* 3 Languages Switcher (Marathi / Hindi / English) */}
         <LanguageSwitcher variant="light" />
 

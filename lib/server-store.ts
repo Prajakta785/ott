@@ -141,7 +141,9 @@ export function isServerDeletedId(id: string): boolean {
 export function getServerContent(type?: string): ContentItem[] {
   const store = readServerStore();
   const deletedIds = Array.isArray(store.deletedIds) ? store.deletedIds : [];
-  let list = (store.content || []).filter(c => !deletedIds.includes(c.id));
+  const deletedContent = Array.isArray((store as any).deleted_content) ? (store as any).deleted_content : [];
+  const allDeleted = new Set([...deletedIds, ...deletedContent]);
+  let list = (store.content || []).filter(c => !allDeleted.has(c.id) && c.type !== 'podcast' && !c.id.startsWith('pod-') && !String(c.title).toLowerCase().includes('podcast'));
   if (type) {
     return list.filter(c => c.type === type);
   }

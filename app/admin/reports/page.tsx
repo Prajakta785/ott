@@ -68,7 +68,7 @@ export default function ReportsAnalyticsPage() {
     const durationHours = (item.duration || 0) / 3600;
     return acc + ((item.views || 0) * durationHours);
   }, 0));
-  const activeSubsCount = subList.filter(s => s.status === 'active').length || userList.filter(u => u.subscriptionStatus === 'active').length;
+  const activeSubsCount = subList.filter(s => s.status === 'active').length;
   const totalRevenueAmt = subList.filter(s => s.status === 'active').reduce((acc, s) => acc + (s.amount || 0), 0);
 
   // 1. REAL DAILY VIEWS REPORT DATA (Aggregated from live Firestore content & user activity)
@@ -76,39 +76,24 @@ export default function ReportsAnalyticsPage() {
     const dateMap: Record<string, { views: number; watchSecs: number; uniqueUsers: Set<string>; items: number; rawTimestamp: number }> = {};
 
     contentList.forEach(item => {
-      // Content upload/publish date on OTT platform - ignore theatrical historical release dates (like 2016 cinema release)
-      const rawDate = item.createdAt;
-      if (rawDate) {
-        const d = new Date(rawDate);
+      const v = item.views || 0;
+      // Only include content in daily viewership report if it has actual views
+      if (v > 0 && item.createdAt) {
+        const d = new Date(item.createdAt);
         if (isNaN(d.getTime()) || d.getFullYear() < 2025) return;
-        const dateKey = formatDate(rawDate);
-        if (dateKey.includes('2016') || dateKey.toLowerCase().includes('apr 29, 2016')) return;
+        const dateKey = formatDate(item.createdAt);
 
         if (!dateMap[dateKey]) {
           dateMap[dateKey] = { views: 0, watchSecs: 0, uniqueUsers: new Set(), items: 0, rawTimestamp: d.getTime() };
         }
-        const v = item.views || 0;
         dateMap[dateKey].views += v;
         dateMap[dateKey].watchSecs += v * (item.duration || 0);
         dateMap[dateKey].items += 1;
       }
     });
 
-    userList.forEach(user => {
-      if (user.createdAt) {
-        const d = new Date(user.createdAt);
-        if (isNaN(d.getTime()) || d.getFullYear() < 2025) return;
-        const dateKey = formatDate(user.createdAt);
-        if (dateKey.includes('2016') || dateKey.toLowerCase().includes('apr 29, 2016')) return;
-
-        if (!dateMap[dateKey]) {
-          dateMap[dateKey] = { views: 0, watchSecs: 0, uniqueUsers: new Set(), items: 0, rawTimestamp: d.getTime() };
-        }
-        dateMap[dateKey].uniqueUsers.add(user.id);
-      }
-    });
-
-    const entries = Object.entries(dateMap);
+    // Only include dates that have recorded viewership (actual views > 0)
+    const entries = Object.entries(dateMap).filter(([_, stats]) => stats.views > 0);
     if (entries.length === 0) return [];
 
     // Sort chronologically descending (latest date first)
@@ -116,19 +101,19 @@ export default function ReportsAnalyticsPage() {
 
     return entries.map(([date, stats]) => {
       const watchHours = Math.round(stats.watchSecs / 3600);
-      const uniques = stats.uniqueUsers.size || (stats.views > 0 ? Math.round(stats.views * 0.7) : 0);
+      const uniques = stats.uniqueUsers.size;
       return {
         date,
         totalViews: stats.views.toLocaleString(),
         uniqueViewers: uniques.toLocaleString(),
         watchHours: `${watchHours.toLocaleString()} hrs`,
-        peakTime: stats.views > 0 ? '08:00 PM - 10:00 PM' : '-',
-        topPlatform: stats.views > 0 ? 'Mobile & Android TV' : '-',
+        peakTime: '-',
+        topPlatform: '-',
         rawViews: stats.views,
         rawUniques: uniques,
       };
     });
-  }, [contentList, userList]);
+  }, [contentList]);
 
   // 2. REAL MONTHLY VIEWS REPORT DATA (Aggregated from real content & subscriptions)
   const monthlyData = useMemo(() => {
@@ -136,7 +121,8 @@ export default function ReportsAnalyticsPage() {
 
     contentList.forEach(c => {
       const dateStr = c.createdAt;
-      if (dateStr) {
+      const v = c.views || 0;
+      if (dateStr && v > 0) {
         const d = new Date(dateStr);
         if (!isNaN(d.getTime()) && d.getFullYear() >= 2025) {
           const monthKey = d.toLocaleString(lang === 'mr' ? 'mr-IN' : 'en-IN', { month: 'long', year: 'numeric' });
@@ -145,7 +131,6 @@ export default function ReportsAnalyticsPage() {
           if (!monthMap[monthKey]) {
             monthMap[monthKey] = { views: 0, bandwidthBytes: 0, subs: 0, revenue: 0, categories: {}, rawTimestamp: d.getTime() };
           }
-          const v = c.views || 0;
           monthMap[monthKey].views += v;
           monthMap[monthKey].bandwidthBytes += v * 0.45;
           const cat = c.genres?.[0] || (c.type === 'movie' ? 'Movies' : c.type === 'series' ? 'Web Series' : c.type === 'news' ? 'News' : 'General');
@@ -155,7 +140,7 @@ export default function ReportsAnalyticsPage() {
     });
 
     subList.forEach(s => {
-      if (s.startDate) {
+      if (s.startDate && (s.amount || 0) > 0) {
         const d = new Date(s.startDate);
         if (!isNaN(d.getTime()) && d.getFullYear() >= 2025) {
           const monthKey = d.toLocaleString(lang === 'mr' ? 'mr-IN' : 'en-IN', { month: 'long', year: 'numeric' });
@@ -170,7 +155,7 @@ export default function ReportsAnalyticsPage() {
       }
     });
 
-    const entries = Object.entries(monthMap);
+    const entries = Object.entries(monthMap).filter(([_, stats]) => stats.views > 0 || stats.subs > 0);
     if (entries.length === 0) return [];
 
     entries.sort((a, b) => b[1].rawTimestamp - a[1].rawTimestamp);
@@ -254,11 +239,11 @@ export default function ReportsAnalyticsPage() {
 
     contentList.forEach(c => {
       const dName = c.district?.trim();
-      if (dName) {
+      const v = c.views || 0;
+      if (dName && v > 0) {
         if (!districtMap[dName]) {
           districtMap[dName] = { viewers: 0, watchSecs: 0, subscribers: 0, titles: [] };
         }
-        const v = c.views || 0;
         districtMap[dName].viewers += v;
         districtMap[dName].watchSecs += v * (c.duration || 0);
         if (c.title) districtMap[dName].titles.push(c.title);
@@ -277,7 +262,7 @@ export default function ReportsAnalyticsPage() {
       }
     });
 
-    const entries = Object.entries(districtMap);
+    const entries = Object.entries(districtMap).filter(([_, stats]) => stats.viewers > 0 || stats.subscribers > 0);
     if (entries.length === 0) return [];
 
     return entries.map(([district, stats]) => {
