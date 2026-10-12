@@ -13,7 +13,6 @@ import {
   ShieldCheck, 
   Sparkles, 
   LogOut, 
-  RefreshCcw, 
   Newspaper, 
   Megaphone, 
   BarChart3, 
@@ -397,12 +396,6 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     { name: t('navAdmins'), href: '/admin/admins', icon: ShieldCheck }
   ];
 
-  const handleResetData = () => {
-    if (confirm(lang === 'mr' ? 'सर्व डेटा रीसेट करायचा आहे का?' : lang === 'hi' ? 'क्या आप सभी डेटा रीसेट करना चाहते हैं?' : 'Reset all demo data back to clean records?')) {
-      firestoreService.resetDemoData();
-      window.location.reload();
-    }
-  };
 
   const visibleMediaNav = role === 'superadmin' 
     ? fullMediaNav 
@@ -703,14 +696,6 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
           </span>
         </div>
 
-        <button
-          type="button"
-          onClick={handleResetData}
-          className="w-full flex items-center gap-3 px-3.5 py-2 rounded-xl text-xs font-bold text-[#7A6F68] hover:text-[#2D2522] hover:bg-white transition cursor-pointer"
-        >
-          <RefreshCcw className="w-4 h-4 text-[#D97706]" />
-          <span>{lang === 'mr' ? 'डेटा रीसेट करा' : lang === 'hi' ? 'डेटा रीसेट करें' : 'Reset Demo Data'}</span>
-        </button>
 
         <button
           type="button"
