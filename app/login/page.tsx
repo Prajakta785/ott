@@ -10,8 +10,6 @@ import {
   EyeOff, 
   AlertCircle, 
   CheckCircle2, 
-  KeyRound, 
-  Sparkles,
   HelpCircle,
   X
 } from 'lucide-react';
@@ -107,12 +105,6 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleFillDemo = (demoEmail: string, demoPass: string) => {
-    setEmail(demoEmail);
-    setPassword(demoPass);
-    setErrorMessage(null);
   };
 
   return (
@@ -258,49 +250,7 @@ export default function LoginPage() {
                 </>
               )}
             </button>
-
-            {/* Direct 1-Click Super Admin Access */}
-            <button
-              type="button"
-              disabled={loading}
-              onClick={async () => {
-                setLoading(true);
-                const res = await login('admin@graminbharat.tv', 'admin123');
-                if (res.success) {
-                  if (typeof window !== 'undefined') {
-                    window.location.replace('/admin');
-                  }
-                } else {
-                  setLoading(false);
-                }
-              }}
-              className="w-full py-2 px-3.5 rounded-xl bg-gradient-to-r from-amber-600 via-amber-500 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white text-[11px] font-bold transition-all duration-200 shadow-xs hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 flex items-center justify-center gap-1.5 cursor-pointer"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-amber-200" />
-              <span>{lang === 'mr' ? '⚡ मुख्य प्रशासक म्हणून थेट प्रवेश करा (1-Click)' : lang === 'hi' ? '⚡ मुख्य व्यवस्थापक के रूप में सीधा प्रवेश करें' : '⚡ Direct Super Admin Access (1-Click)'}</span>
-            </button>
           </form>
-
-          {/* Quick Demo Credentials Helper */}
-          <div className="p-2.5 rounded-xl bg-[#FFFBEB] border border-[#FDE68A] space-y-1.5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1 text-[11px] font-bold text-[#D97706]">
-                <KeyRound className="w-3 h-3" />
-                <span>{lang === 'mr' ? 'चाचणी लॉगिन माहिती' : lang === 'hi' ? 'परीक्षण लॉगिन विवरण' : 'Demo Credentials'}</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => handleFillDemo('admin@graminbharat.tv', 'admin123')}
-                className="text-[9.5px] font-black uppercase tracking-wider text-[#166534] hover:text-[#14532D] bg-white px-2 py-0.5 rounded border border-[#B7E2CD] shadow-2xs hover:shadow-xs transition cursor-pointer"
-              >
-                {lang === 'mr' ? 'माहिती भरा' : lang === 'hi' ? 'विवरण भरें' : 'Auto Fill'}
-              </button>
-            </div>
-            <div className="text-[10.5px] font-medium text-[#7A6F68] space-y-0.5">
-              <p><span className="font-bold text-[#2D2522]">Email:</span> <code className="bg-white px-1 py-0.5 rounded border border-[#E5DBCA] text-[#D97706]">admin@graminbharat.tv</code></p>
-              <p><span className="font-bold text-[#2D2522]">Password:</span> <code className="bg-white px-1 py-0.5 rounded border border-[#E5DBCA] text-[#D97706]">admin123</code></p>
-            </div>
-          </div>
         </div>
       </main>
 
