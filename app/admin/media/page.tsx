@@ -28,7 +28,6 @@ import { ConfirmDialog } from '@/components/confirm-dialog';
 import { BunnyUploader } from '@/components/bunny-uploader';
 import { VideoPlayer } from '@/components/video-player';
 import { ConnectAudioModal } from '@/components/connect-audio-modal';
-import { AddCategoryModal } from '@/components/add-category-modal';
 import { firestoreService } from '@/lib/firestore-service';
 import { ContentCategory, ContentItem, ContentType } from '@/lib/types';
 import { formatDuration, slugify, cn } from '@/lib/utils';
@@ -99,7 +98,6 @@ function MediaContentPageInner() {
 
   // Modals
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [isAddCategoryOpen, setIsAddCategoryOpen] = useState(false);
   const [previewItem, setPreviewItem] = useState<ContentItem | null>(null);
   const [itemForAudio, setItemForAudio] = useState<ContentItem | null>(null);
   const [itemToDelete, setItemToDelete] = useState<ContentItem | null>(null);
@@ -453,15 +451,6 @@ function MediaContentPageInner() {
         </div>
 
         <div className="flex items-center gap-2.5 flex-wrap shrink-0">
-          <button
-            type="button"
-            onClick={() => setIsAddCategoryOpen(true)}
-            className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-800 font-bold text-xs rounded-xl flex items-center gap-2 transition shadow-xs cursor-pointer"
-          >
-            <Sparkles className="w-4 h-4 text-amber-500" />
-            <span>{lang === 'mr' ? '+ नवीन कॅटेगरी जोडा' : lang === 'hi' ? '+ नई श्रेणी जोड़ें' : '+ Add Category'}</span>
-          </button>
-
           <button
             type="button"
             onClick={handleOpenCreate}
@@ -1028,17 +1017,6 @@ function MediaContentPageInner() {
           </div>
         </div>
       )}
-
-      {/* Add Category Modal */}
-      <AddCategoryModal
-        isOpen={isAddCategoryOpen}
-        onClose={() => setIsAddCategoryOpen(false)}
-        onCategoryAdded={(newCat) => {
-          setCategories(prev => [...prev, newCat]);
-          setSelectedCategory(newCat.nameEnglish);
-          router.replace(`/admin/media?category=${encodeURIComponent(newCat.nameEnglish)}`);
-        }}
-      />
 
       {/* Video Preview Modal */}
       {previewItem && (

@@ -37,7 +37,6 @@ import { cn } from '@/lib/utils';
 import { firestoreService } from '@/lib/firestore-service';
 import { useLanguage } from '@/lib/i18n';
 import { ContentCategory } from '@/lib/types';
-import { AddCategoryModal } from '@/components/add-category-modal';
 
 export interface SidebarProps {
   isOpen?: boolean;
@@ -99,7 +98,6 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const addMediaRef = React.useRef<HTMLDivElement>(null);
   const [showAddOpsMenu, setShowAddOpsMenu] = React.useState(false);
   const addOpsRef = React.useRef<HTMLDivElement>(null);
-  const [isAddCategoryModalOpen, setIsAddCategoryModalOpen] = React.useState(false);
   const [isMounted, setIsMounted] = React.useState(false);
   const [dynamicCategories, setDynamicCategories] = React.useState<ContentCategory[]>([]);
   const [currentQuery, setCurrentQuery] = React.useState('');
@@ -737,16 +735,6 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
           </aside>
         </div>
       )}
-
-      {/* Add Custom Category Modal */}
-      <AddCategoryModal
-        isOpen={isAddCategoryModalOpen}
-        onClose={() => setIsAddCategoryModalOpen(false)}
-        onCategoryAdded={(newCat) => {
-          setDynamicCategories(prev => [...prev, newCat]);
-          router.push(`/admin/media?category=${encodeURIComponent(newCat.nameEnglish)}`);
-        }}
-      />
     </>
   );
 }

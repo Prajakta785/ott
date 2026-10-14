@@ -25,7 +25,6 @@ import { useAuth } from '@/lib/auth-context';
 import { firestoreService } from '@/lib/firestore-service';
 import { ContentItem, LiveChannel, NotificationItem } from '@/lib/types';
 import { LanguageSwitcher } from '@/components/language-switcher';
-import { AddCategoryModal } from '@/components/add-category-modal';
 import { useLanguage } from '@/lib/i18n';
 
 export function Header({ onToggleSidebar }: { onToggleSidebar?: () => void }) {
@@ -33,7 +32,6 @@ export function Header({ onToggleSidebar }: { onToggleSidebar?: () => void }) {
   const { role, canEdit, hasAccessTo } = useAuth();
   const { t, lang } = useLanguage();
   const [showAddMenu, setShowAddMenu] = useState(false);
-  const [isAddCategoryOpen, setIsAddCategoryOpen] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [hasUnread, setHasUnread] = useState(true);
@@ -163,8 +161,7 @@ export function Header({ onToggleSidebar }: { onToggleSidebar?: () => void }) {
   const totalResults = searchResults.content.length + searchResults.liveChannels.length;
 
   return (
-    <>
-      <header className="h-16 border-b border-[#E5DBCA] bg-[#FAF7F2]/95 backdrop-blur-xl px-3 sm:px-6 flex items-center justify-between sticky top-0 z-20 shadow-xs text-[#2D2522]">
+    <header className="h-16 border-b border-[#E5DBCA] bg-[#FAF7F2]/95 backdrop-blur-xl px-3 sm:px-6 flex items-center justify-between sticky top-0 z-20 shadow-xs text-[#2D2522]">
       {/* Search Input & Mobile Menu Toggle */}
       <div className="flex items-center gap-2 sm:gap-4 flex-1 max-w-md">
         <button
@@ -335,27 +332,6 @@ export function Header({ onToggleSidebar }: { onToggleSidebar?: () => void }) {
                           </Link>
                         );
                       })}
-
-                      {/* Add Custom Category Option */}
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setShowAddMenu(false);
-                          setIsAddCategoryOpen(true);
-                        }}
-                        className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-xs font-bold text-amber-700 bg-amber-50/80 hover:bg-amber-100/90 rounded-xl transition-all cursor-pointer border border-amber-200/60 mt-1 active:scale-95 group text-left"
-                      >
-                        <Sparkles className="w-4 h-4 text-amber-600 group-hover:rotate-12 transition-transform shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <p className="font-extrabold truncate">
-                            {lang === 'mr' ? '+ नवीन कॅटेगरी जोडा' : lang === 'hi' ? '+ नई श्रेणी जोड़ें' : '+ Add Category'}
-                          </p>
-                          <p className="text-[10px] text-amber-600/80 font-normal truncate">
-                            {lang === 'mr' ? 'कस्टम कॅटेगरी व आयकॉन' : 'Custom Category'}
-                          </p>
-                        </div>
-                      </button>
                     </div>
                   )}
                 </>
@@ -502,16 +478,5 @@ export function Header({ onToggleSidebar }: { onToggleSidebar?: () => void }) {
       </div>
 
     </header>
-
-      {/* Add Custom Category Modal */}
-      <AddCategoryModal
-        isOpen={isAddCategoryOpen}
-        onClose={() => setIsAddCategoryOpen(false)}
-        onCategoryAdded={(cat) => {
-          setIsAddCategoryOpen(false);
-          router.push(`/admin/media?category=${encodeURIComponent(cat.nameEnglish)}`);
-        }}
-      />
-    </>
   );
 }
