@@ -311,18 +311,19 @@ export default function NewsCMSPage() {
           <p className="text-slate-800 font-bold text-sm">{t('noDataText')}</p>
         </div>
       ) : (
-        <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-luxury">
-          <table className="w-full text-left border-collapse text-sm">
-            <thead>
-              <tr className="border-b border-slate-100 bg-slate-50 text-slate-500 text-xs font-bold uppercase">
-                <th className="py-4 px-5">{t('colNewsTitle')}</th>
-                <th className="py-4 px-5">{t('colLocation')}</th>
-                <th className="py-4 px-5">{t('colCategory')}</th>
-                <th className="py-4 px-5">{t('colReporter')}</th>
-                <th className="py-4 px-5">{t('colStatus')}</th>
-                <th className="py-4 px-5 text-right">{t('colActions')}</th>
-              </tr>
-            </thead>
+        <div className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200 shadow-luxury overflow-hidden">
+          <div className="overflow-x-auto w-full">
+            <table className="w-full text-left border-collapse text-sm min-w-[880px]">
+              <thead>
+                <tr className="border-b border-slate-100 bg-slate-50 text-slate-500 text-xs font-bold uppercase whitespace-nowrap">
+                  <th className="py-4 px-5 min-w-[260px]">{t('colNewsTitle')}</th>
+                  <th className="py-4 px-5 min-w-[160px]">{t('colLocation')}</th>
+                  <th className="py-4 px-5 min-w-[140px]">{t('colCategory')}</th>
+                  <th className="py-4 px-5 min-w-[140px]">{t('colReporter')}</th>
+                  <th className="py-4 px-5 min-w-[110px]">{t('colStatus')}</th>
+                  <th className="py-4 px-5 min-w-[130px] text-right">{t('colActions')}</th>
+                </tr>
+              </thead>
             <tbody className="divide-y divide-slate-100 text-slate-800 text-xs">
               {filtered.map((item) => (
                 <tr key={item.id} className="hover:bg-slate-50 transition">
@@ -395,6 +396,7 @@ export default function NewsCMSPage() {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 

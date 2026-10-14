@@ -233,19 +233,20 @@ export default function AdvertisementsPage() {
           <p className="text-slate-800 font-bold text-sm">{t('noDataText')}</p>
         </div>
       ) : (
-        <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-luxury">
-          <table className="w-full text-left border-collapse text-sm">
-            <thead>
-              <tr className="border-b border-slate-100 bg-slate-50 text-slate-500 text-xs font-bold uppercase">
-                <th className="py-4 px-5">{t('colCampaign')}</th>
-                <th className="py-4 px-5">{t('colSlot')}</th>
-                <th className="py-4 px-5">{t('colViews')}</th>
-                <th className="py-4 px-5">{t('colClicks')}</th>
-                <th className="py-4 px-5">{t('colDates')}</th>
-                <th className="py-4 px-5">{t('colStatus')}</th>
-                <th className="py-4 px-5 text-right">{t('colActions')}</th>
-              </tr>
-            </thead>
+        <div className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200 shadow-luxury overflow-hidden">
+          <div className="overflow-x-auto w-full">
+            <table className="w-full text-left border-collapse text-sm min-w-[880px]">
+              <thead>
+                <tr className="border-b border-slate-100 bg-slate-50 text-slate-500 text-xs font-bold uppercase whitespace-nowrap">
+                  <th className="py-4 px-5 min-w-[220px]">{t('colCampaign')}</th>
+                  <th className="py-4 px-5 min-w-[130px]">{t('colSlot')}</th>
+                  <th className="py-4 px-5 min-w-[100px]">{t('colViews')}</th>
+                  <th className="py-4 px-5 min-w-[100px]">{t('colClicks')}</th>
+                  <th className="py-4 px-5 min-w-[150px]">{t('colDates')}</th>
+                  <th className="py-4 px-5 min-w-[110px]">{t('colStatus')}</th>
+                  <th className="py-4 px-5 min-w-[120px] text-right">{t('colActions')}</th>
+                </tr>
+              </thead>
             <tbody className="divide-y divide-slate-100 text-slate-800 text-xs">
               {filtered.map((ad) => (
                 <tr key={ad.id} className="hover:bg-slate-50 transition">
@@ -317,6 +318,7 @@ export default function AdvertisementsPage() {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 

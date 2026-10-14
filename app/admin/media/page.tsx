@@ -556,91 +556,93 @@ function MediaContentPageInner() {
           </button>
         </div>
       ) : viewMode === 'table' ? (
-        <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-luxury">
-          <table className="w-full text-left border-collapse text-sm">
-            <thead>
-              <tr className="border-b border-slate-100 bg-slate-50 text-slate-500 text-xs font-bold uppercase">
-                <th className="py-4 px-5">{lang === 'mr' ? 'बातमी व शीर्षक' : 'Content & Title'}</th>
-                <th className="py-4 px-5">{lang === 'mr' ? 'जिल्हा व स्थान' : 'District & Location'}</th>
-                <th className="py-4 px-5">{lang === 'mr' ? 'श्रेणी' : 'Category'}</th>
-                <th className="py-4 px-5">{lang === 'mr' ? 'वार्ताहर' : 'Reporter'}</th>
-                <th className="py-4 px-5">{lang === 'mr' ? 'स्थिती' : 'Status'}</th>
-                <th className="py-4 px-5 text-right">{lang === 'mr' ? 'कृती' : 'Actions'}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 text-slate-800 text-xs">
-              {filteredItems.map((item) => (
-                <tr key={item.id} className="hover:bg-slate-50 transition">
-                  <td className="py-4 px-5">
-                    <div className="flex items-center gap-3.5">
-                      <img 
-                        src={getSafeImageUrl(item.poster || item.banner || (item.videoId ? `/api/bunny/thumbnail?videoId=${item.videoId}` : ''))} 
-                        alt={item.title} 
-                        onError={handleImageError}
-                        className="w-12 h-8 rounded-lg object-cover border border-slate-200 shrink-0 shadow-sm bg-slate-100" 
-                      />
-                      <div>
-                        <p className="font-bold text-slate-900 line-clamp-1">{item.title}</p>
-                        <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5">{item.description}</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="py-4 px-5">
-                    <div className="flex items-center gap-1.5 text-slate-700 font-medium">
-                      <MapPin className="w-3.5 h-3.5 text-rose-500 shrink-0" />
-                      <span>{item.district || 'महाराष्ट्र'}</span>
-                      {item.taluka && <span className="text-slate-400 text-[10px]">({item.taluka})</span>}
-                    </div>
-                  </td>
-                  <td className="py-4 px-5">
-                    <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200/60">
-                      {item.genres?.[0] || item.subCategory || selectedCategory}
-                    </span>
-                  </td>
-                  <td className="py-4 px-5">
-                    <div className="flex items-center gap-1.5 text-slate-600">
-                      <User className="w-3.5 h-3.5 text-slate-400" />
-                      <span>{item.reporterName || item.director || item.cast?.[0] || 'विशेष प्रतिनिधी'}</span>
-                    </div>
-                  </td>
-                  <td className="py-4 px-5">
-                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${
-                      item.status === 'published' 
-                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
-                        : 'bg-amber-50 text-amber-700 border-amber-200'
-                    }`}>
-                      {item.status === 'published' ? 'Published' : 'Draft'}
-                    </span>
-                  </td>
-                  <td className="py-4 px-5 text-right">
-                    <div className="flex items-center justify-end gap-1.5">
-                      <button 
-                        onClick={() => setItemForAudio(item)}
-                        className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition cursor-pointer"
-                        title={lang === 'mr' ? 'ऑडिओ जोडा' : 'Attach Audio'}
-                      >
-                        <Headphones className="w-4 h-4" />
-                      </button>
-                      <button 
-                        onClick={() => handleOpenEdit(item)}
-                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
-                        title="Edit"
-                      >
-                        <Edit3 className="w-4 h-4" />
-                      </button>
-                      <button 
-                        onClick={() => setItemToDelete(item)}
-                        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition cursor-pointer"
-                        title="Delete"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </td>
+        <div className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200 shadow-luxury overflow-hidden">
+          <div className="overflow-x-auto w-full">
+            <table className="w-full text-left border-collapse text-sm min-w-[880px]">
+              <thead>
+                <tr className="border-b border-slate-100 bg-slate-50 text-slate-500 text-xs font-bold uppercase whitespace-nowrap">
+                  <th className="py-4 px-5 min-w-[260px]">{lang === 'mr' ? 'बातमी व शीर्षक' : 'Content & Title'}</th>
+                  <th className="py-4 px-5 min-w-[160px]">{lang === 'mr' ? 'जिल्हा व स्थान' : 'District & Location'}</th>
+                  <th className="py-4 px-5 min-w-[140px]">{lang === 'mr' ? 'श्रेणी' : 'Category'}</th>
+                  <th className="py-4 px-5 min-w-[140px]">{lang === 'mr' ? 'वार्ताहर' : 'Reporter'}</th>
+                  <th className="py-4 px-5 min-w-[110px]">{lang === 'mr' ? 'स्थिती' : 'Status'}</th>
+                  <th className="py-4 px-5 min-w-[130px] text-right">{lang === 'mr' ? 'कृती' : 'Actions'}</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-slate-800 text-xs">
+                {filteredItems.map((item) => (
+                  <tr key={item.id} className="hover:bg-slate-50 transition">
+                    <td className="py-4 px-5 min-w-[260px]">
+                      <div className="flex items-center gap-3.5">
+                        <img 
+                          src={getSafeImageUrl(item.poster || item.banner || (item.videoId ? `/api/bunny/thumbnail?videoId=${item.videoId}` : ''))} 
+                          alt={item.title} 
+                          onError={handleImageError}
+                          className="w-14 h-9 rounded-lg object-cover border border-slate-200 shrink-0 shadow-sm bg-slate-100" 
+                        />
+                        <div className="min-w-0">
+                          <p className="font-bold text-slate-900 line-clamp-1">{item.title}</p>
+                          <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5">{item.description}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="py-4 px-5 whitespace-nowrap">
+                      <div className="flex items-center gap-1.5 text-slate-700 font-medium">
+                        <MapPin className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                        <span>{item.district || 'महाराष्ट्र'}</span>
+                        {item.taluka && <span className="text-slate-400 text-[10px]">({item.taluka})</span>}
+                      </div>
+                    </td>
+                    <td className="py-4 px-5 whitespace-nowrap">
+                      <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200/60 inline-block">
+                        {item.genres?.[0] || item.subCategory || selectedCategory}
+                      </span>
+                    </td>
+                    <td className="py-4 px-5 whitespace-nowrap">
+                      <div className="flex items-center gap-1.5 text-slate-600">
+                        <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        <span>{item.reporterName || item.director || item.cast?.[0] || 'विशेष प्रतिनिधी'}</span>
+                      </div>
+                    </td>
+                    <td className="py-4 px-5 whitespace-nowrap">
+                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border inline-block ${
+                        item.status === 'published' 
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                          : 'bg-amber-50 text-amber-700 border-amber-200'
+                      }`}>
+                        {item.status === 'published' ? 'Published' : 'Draft'}
+                      </span>
+                    </td>
+                    <td className="py-4 px-5 text-right whitespace-nowrap">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button 
+                          onClick={() => setItemForAudio(item)}
+                          className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition cursor-pointer"
+                          title={lang === 'mr' ? 'ऑडिओ जोडा' : 'Attach Audio'}
+                        >
+                          <Headphones className="w-4 h-4" />
+                        </button>
+                        <button 
+                          onClick={() => handleOpenEdit(item)}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                          title="Edit"
+                        >
+                          <Edit3 className="w-4 h-4" />
+                        </button>
+                        <button 
+                          onClick={() => setItemToDelete(item)}
+                          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition cursor-pointer"
+                          title="Delete"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       ) : (
         /* Grid View */

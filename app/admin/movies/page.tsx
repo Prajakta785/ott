@@ -423,7 +423,7 @@ export default function MoviesPage() {
       ) : (
         /* Table View */
         <div className="rounded-3xl bg-white border border-[#E5DBCA] p-4 overflow-x-auto shadow-soft">
-          <table className="w-full text-left text-sm">
+          <table className="w-full text-left text-sm min-w-[850px]">
             <thead className="text-xs uppercase tracking-wider text-[#7A6F68] border-b border-[#E5DBCA]">
               <tr>
                 <th className="pb-3 font-bold">Movie</th>
