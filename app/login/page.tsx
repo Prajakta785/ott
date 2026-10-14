@@ -139,14 +139,14 @@ export default function LoginPage() {
       </header>
 
       {/* Main Login Card Center */}
-      <main className="relative z-10 flex-1 flex items-center justify-center p-4 sm:p-8 my-auto">
-        <div className="w-full max-w-[500px] bg-white border border-[#E5DBCA] rounded-3xl shadow-[0_25px_60px_-15px_rgba(217,119,6,0.18),0_15px_30px_-10px_rgba(45,37,34,0.08)] p-6 sm:p-10 space-y-6 relative overflow-hidden transition-all duration-300">
+      <main className="relative z-10 flex-1 flex items-center justify-center p-4 sm:p-6 my-auto">
+        <div className="w-full max-w-[420px] bg-white border border-[#E5DBCA] rounded-3xl shadow-[0_25px_60px_-15px_rgba(217,119,6,0.18),0_15px_30px_-10px_rgba(45,37,34,0.08)] px-6 sm:px-8 py-9 sm:py-11 space-y-6 sm:space-y-7 relative overflow-hidden transition-all duration-300">
           {/* Animated Accent Gradient Top Line */}
           <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-[#D97706] via-[#EA580C] to-[#166534] bg-[length:200%_100%] animate-gradient-flow" />
 
           {/* Brand Logo & Header */}
-          <div className="text-center space-y-2 pt-1">
-            <div className="w-16 h-16 rounded-2xl bg-[#FAF7F2] border border-[#E5DBCA] p-2 mx-auto flex items-center justify-center shadow-xs transition-transform duration-300 hover:scale-105">
+          <div className="text-center space-y-3 pt-1">
+            <div className="w-16 h-16 sm:w-18 sm:h-18 rounded-2xl bg-[#FAF7F2] border border-[#E5DBCA] p-2 mx-auto flex items-center justify-center shadow-xs transition-transform duration-300 hover:scale-105">
               <img src="/logo.png" alt="ग्रामीण भारत TV" className="w-full h-full object-contain" />
             </div>
             <div>
@@ -156,7 +156,7 @@ export default function LoginPage() {
               <h1 className="text-2xl sm:text-3xl font-black text-[#2D2522] mt-2 tracking-tight">
                 {lang === 'mr' ? 'स्वागत आहे' : lang === 'hi' ? 'स्वागत है' : 'Welcome Back'}
               </h1>
-              <p className="text-xs sm:text-sm text-[#7A6F68] font-medium mt-1 leading-relaxed max-w-sm mx-auto">
+              <p className="text-xs text-[#7A6F68] font-medium mt-1.5 leading-relaxed max-w-xs mx-auto">
                 {lang === 'mr'
                   ? 'ग्रामीण भारत टीव्ही कन्सोलमध्ये प्रवेश करण्यासाठी माहिती भरा'
                   : lang === 'hi'
@@ -175,7 +175,7 @@ export default function LoginPage() {
           )}
 
           {/* Login Form */}
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-5">
             {/* Email Field */}
             <div className="space-y-1.5">
               <label className="block text-xs font-bold text-[#2D2522]">
@@ -189,7 +189,7 @@ export default function LoginPage() {
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="admin@graminbharat.tv"
                   autoComplete="username"
-                  className="w-full bg-[#FAF7F2] border border-[#E5DBCA] rounded-xl pl-10 pr-4 py-2.5 sm:py-3 text-sm font-semibold text-[#0F172A] placeholder-[#9CA3AF] focus:outline-none focus:border-[#166534] focus:ring-2 focus:ring-[#166534]/15 focus:bg-white transition-all shadow-2xs"
+                  className="w-full bg-[#FAF7F2] border border-[#E5DBCA] rounded-xl pl-10 pr-4 py-3 text-sm font-semibold text-[#0F172A] placeholder-[#9CA3AF] focus:outline-none focus:border-[#166534] focus:ring-2 focus:ring-[#166534]/15 focus:bg-white transition-all shadow-2xs"
                 />
               </div>
             </div>
@@ -216,7 +216,7 @@ export default function LoginPage() {
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
                   autoComplete="current-password"
-                  className="w-full bg-[#FAF7F2] border border-[#E5DBCA] rounded-xl pl-10 pr-10 py-2.5 sm:py-3 text-sm font-semibold text-[#0F172A] placeholder-[#9CA3AF] focus:outline-none focus:border-[#166534] focus:ring-2 focus:ring-[#166534]/15 focus:bg-white transition-all shadow-2xs"
+                  className="w-full bg-[#FAF7F2] border border-[#E5DBCA] rounded-xl pl-10 pr-10 py-3 text-sm font-semibold text-[#0F172A] placeholder-[#9CA3AF] focus:outline-none focus:border-[#166534] focus:ring-2 focus:ring-[#166534]/15 focus:bg-white transition-all shadow-2xs"
                 />
                 <button
                   type="button"
@@ -230,7 +230,7 @@ export default function LoginPage() {
             </div>
 
             {/* Remember Me Checkbox */}
-            <div className="flex items-center justify-between pt-1">
+            <div className="flex items-center justify-between pt-1 pb-1">
               <label className="flex items-center gap-2 cursor-pointer select-none">
                 <input
                   type="checkbox"
@@ -248,7 +248,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 sm:py-3.5 px-4 rounded-xl bg-gradient-to-r from-[#166534] via-[#15803D] to-[#14532D] hover:from-[#14532D] hover:to-[#052E16] text-white text-sm font-bold transition-all duration-200 shadow-md hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-50"
+              className="w-full py-3.5 sm:py-4 px-4 rounded-xl bg-gradient-to-r from-[#166534] via-[#15803D] to-[#14532D] hover:from-[#14532D] hover:to-[#052E16] text-white text-sm font-bold transition-all duration-200 shadow-md hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-50"
             >
               {loading ? (
                 <>
