@@ -792,78 +792,79 @@
   "categories": [
     {
       "id": "cat-live",
-      "iconName": "Radio",
-      "nameEnglish": "Live",
-      "nameMarathi": "लाईव्ह टीव्ही",
       "badgeText": "Live TV",
+      "badgeColor": "bg-red-50 text-red-600 border-red-200",
       "subCategories": [
         "Live TV",
         "ग्रामीण भारत Live",
         "विशेष प्रसारण"
       ],
-      "order": 1,
+      "iconName": "Radio",
+      "slug": "live",
       "type": "live",
-      "badgeColor": "bg-red-50 text-red-600 border-red-200",
-      "slug": "live"
+      "order": 1,
+      "nameMarathi": "लाईव्ह टीव्ही",
+      "nameEnglish": "Live"
     },
     {
       "id": "cat-news",
+      "order": 2,
+      "nameMarathi": "बातम्या",
+      "nameEnglish": "News",
+      "badgeText": "News",
       "type": "news",
       "iconName": "Newspaper",
       "slug": "news",
-      "order": 2,
       "subCategories": [
         "महाराष्ट्र",
-        "जिल्हा बा��म्या",
+        "जिल्हा बातम्या",
         "तालुका बातम्या",
         "ग्रामीण बातम्या",
         "राजकीय बातम्या",
         "सामाजिक बातम्या",
         "शेतकरी बातम्या"
       ],
-      "nameMarathi": "बातम्या",
-      "nameEnglish": "News",
-      "badgeColor": "bg-amber-50 text-amber-700 border-amber-200",
-      "badgeText": "News"
+      "badgeColor": "bg-amber-50 text-amber-700 border-amber-200"
     },
     {
       "id": "cat-namdar-maharashtra",
+      "slug": "namdar-maharashtra",
       "nameEnglish": "Namdar Maharashtra",
-      "order": 3,
-      "nameMarathi": "नामदार महाराष्ट्र",
-      "badgeText": "Regional",
       "iconName": "MapPin",
+      "type": "video",
+      "nameMarathi": "नामदार महाराष्ट्र",
+      "order": 3,
+      "badgeColor": "bg-purple-50 text-purple-700 border-purple-200",
+      "badgeText": "Regional",
       "subCategories": [
         "संस्कृती",
         "परंपरा",
         "लोककला",
         "पर्यटन",
         "इतिहास"
-      ],
-      "slug": "namdar-maharashtra",
-      "badgeColor": "bg-purple-50 text-purple-700 border-purple-200",
-      "type": "video"
+      ]
     },
     {
       "id": "cat-gramin-bharat-tv",
-      "iconName": "Tractor",
-      "slug": "gramin-bharat-tv",
-      "order": 4,
       "subCategories": [
         "शेती व कृषी",
         "ग्रामीण विकास",
         "शेतकरी योजना",
         "पंचायत राज"
       ],
-      "badgeColor": "bg-emerald-50 text-emerald-700 border-emerald-200",
+      "iconName": "Tractor",
+      "slug": "gramin-bharat-tv",
       "type": "video",
       "nameMarathi": "ग्रामीण भारत TV",
+      "nameEnglish": "Gramin Bharat TV",
+      "order": 4,
       "badgeText": "Rural",
-      "nameEnglish": "Gramin Bharat TV"
+      "badgeColor": "bg-emerald-50 text-emerald-700 border-emerald-200"
     },
     {
       "id": "cat-entertainment",
-      "iconName": "Clapperboard",
+      "nameEnglish": "Entertainment",
+      "nameMarathi": "मनोरंजन",
       "subCategories": [
         "मनोरंजन शो",
         "संगीत",
@@ -871,36 +872,33 @@
         "नाट्यप्रयोग",
         "कला"
       ],
-      "badgeText": "Shows",
-      "nameMarathi": "मन��रंजन",
-      "nameEnglish": "Entertainment",
-      "type": "video",
-      "badgeColor": "bg-purple-50 text-purple-700 border-purple-200",
+      "slug": "entertainment",
       "order": 5,
-      "slug": "entertainment"
+      "badgeText": "Shows",
+      "type": "video",
+      "iconName": "Clapperboard",
+      "badgeColor": "bg-purple-50 text-purple-700 border-purple-200"
     },
     {
       "id": "cat-movies",
+      "badgeText": "4K VOD",
       "type": "movie",
       "slug": "movies",
-      "iconName": "Film",
-      "nameEnglish": "Movies",
-      "order": 6,
-      "nameMarathi": "चित्रपट",
       "badgeColor": "bg-emerald-50 text-emerald-700 border-emerald-200",
-      "badgeText": "4K VOD",
       "subCategories": [
-        "मराठ��� चित्रपट",
+        "मराठी चित्रपट",
         "हिंदी चित्रपट",
         "Short Films",
         "ग्रामीण कथा",
         "सामाजिक चित्रपट"
-      ]
+      ],
+      "nameMarathi": "चित्रपट",
+      "order": 6,
+      "nameEnglish": "Movies",
+      "iconName": "Film"
     },
     {
       "id": "cat-series",
-      "order": 7,
-      "nameMarathi": "वेब मालिका",
       "subCategories": [
         "ग्रामीण कथा",
         "सामाजिक नाटक",
@@ -908,12 +906,14 @@
         "कौटुंबिक",
         "कॉमेडी"
       ],
-      "nameEnglish": "Web Series",
       "slug": "web-series",
-      "iconName": "Tv",
-      "badgeText": "Series",
+      "badgeColor": "bg-pink-50 text-pink-700 border-pink-200",
       "type": "series",
-      "badgeColor": "bg-pink-50 text-pink-700 border-pink-200"
+      "iconName": "Tv",
+      "nameMarathi": "वेब मालिका",
+      "nameEnglish": "Web Series",
+      "badgeText": "Series",
+      "order": 7
     }
   ],
   "companyInfo": {
@@ -997,7 +997,7 @@
     "ser-muwtt1sv",
     "ser-rang-majha-vegla"
   ],
-  "updatedAt": "2026-10-14T06:09:59.356Z",
+  "updatedAt": "2026-10-14T06:15:45.226Z",
   "deleted_content": [
     "live_1791302481933",
     "notif-muzdnodg",

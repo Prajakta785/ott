@@ -564,212 +564,348 @@ export default function UsersPage() {
         </div>
       </div>
 
-      {/* 4. USERS & DEVICE ENFORCEMENT TABLE */}
-      <div className="rounded-3xl bg-white border border-[#E5DBCA] p-6 shadow-soft">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="text-xs uppercase tracking-wider text-[#7A6F68] border-b border-[#E5DBCA]">
-              <tr>
-                <th className="pb-3 font-bold">{t('colUserPhone')}</th>
-                <th className="pb-3 font-bold">{lang === 'mr' ? 'सक्रिय स्थिती व वेळ (Active Duration)' : lang === 'hi' ? 'सक्रिय स्थिति व समय' : 'Session Status & Duration'}</th>
-                <th className="pb-3 font-bold">{t('colRegistered')}</th>
-                <th className="pb-3 font-bold">{t('colActiveDevices')}</th>
-                <th className="pb-3 font-bold">{t('colSubscription')}</th>
-                <th className="pb-3 font-bold">{t('colPlanExpiry')}</th>
-                <th className="pb-3 font-bold text-right">{t('colActions')}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#E5DBCA]/60">
-              {loading ? (
-                <tr>
-                  <td colSpan={7} className="py-12 text-center text-slate-400 text-xs font-semibold">
-                    <div className="w-6 h-6 border-2 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-                    {t('loadingText')}
-                  </td>
-                </tr>
-              ) : filteredUsers.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="py-12 text-center">
-                    <div className="max-w-md mx-auto text-center space-y-2">
-                      <Users className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-                      <p className="text-slate-800 font-bold text-sm">
-                        {lang === 'mr' ? 'कोणताही प्रेक्षक सापडला नाही.' : lang === 'hi' ? 'कोई दर्शक नहीं मिला।' : 'No users found.'}
-                      </p>
-                      <p className="text-xs text-slate-500 leading-relaxed">
-                        {lang === 'mr'
-                          ? 'Android mobile app मधून ज्या नंबरने लॉगिन केले जाईल, तो युझर येथे थेट दिसेल.'
-                          : 'Users logging in via the Android mobile app will automatically appear here.'}
-                      </p>
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                filteredUsers.map((u) => {
-                  const devList = Array.isArray(u?.devices) ? u.devices : [];
-                  const isUserActive = u.sessionStatus === 'active' && u.isLoggedIn === true && devList.length > 0;
-                  
-                  // Compute active hours / duration
-                  const activeInfo = formatActiveHours(u.lastLogin || u.loginTime || u.createdAt, lang);
+      {/* 4. USERS & DEVICE ENFORCEMENT SECTION */}
+      <div className="rounded-2xl sm:rounded-3xl bg-white border border-[#E5DBCA] p-3 sm:p-6 shadow-soft">
+        
+        {/* Loading State */}
+        {loading ? (
+          <div className="py-12 text-center text-slate-400 text-xs font-semibold">
+            <div className="w-6 h-6 border-2 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+            {t('loadingText')}
+          </div>
+        ) : filteredUsers.length === 0 ? (
+          <div className="py-12 text-center">
+            <div className="max-w-md mx-auto text-center space-y-2">
+              <Users className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+              <p className="text-slate-800 font-bold text-sm">
+                {lang === 'mr' ? 'कोणताही प्रेक्षक सापडला नाही.' : lang === 'hi' ? 'कोई दर्शक नहीं मिला।' : 'No users found.'}
+              </p>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                {lang === 'mr'
+                  ? 'Android mobile app मधून ज्या नंबरने लॉगिन केले जाईल, तो युझर येथे थेट दिसेल.'
+                  : 'Users logging in via the Android mobile app will automatically appear here.'}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* MOBILE VIEW: Dedicated Responsive User Cards (< 640px) */}
+            <div className="sm:hidden flex flex-col gap-3">
+              {filteredUsers.map((u) => {
+                const devList = Array.isArray(u?.devices) ? u.devices : [];
+                const isUserActive = u.sessionStatus === 'active' && u.isLoggedIn === true && devList.length > 0;
+                const activeInfo = formatActiveHours(u.lastLogin || u.loginTime || u.createdAt, lang);
 
-                  return (
-                    <tr key={u.id} className="hover:bg-[#FAF7F2] transition-colors">
-                      
-                      {/* 1. USER & PHONE (Single Deduplicated Entry with Online/Offline Indicator) */}
-                      <td className="py-3.5 pr-4">
-                        <div className="flex items-center gap-3">
-                          <div className="relative">
-                            <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-[#F472B6] to-[#E07A5F] border border-[#E5DBCA] flex items-center justify-center font-bold text-xs text-white uppercase overflow-hidden shrink-0 shadow-soft">
-                              {u.photoUrl ? (
-                                <img src={u.photoUrl} alt={u.name || 'User'} className="w-full h-full object-cover" />
-                              ) : (
-                                (u.name || 'U').charAt(0)
-                              )}
-                            </div>
-                            {/* Live Presence Indicator */}
-                            <span 
-                              className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-white shadow-xs ${
-                                isUserActive ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'
-                              }`} 
-                              title={isUserActive ? 'Online / Active' : 'Logged Out'}
-                            />
+                return (
+                  <div key={u.id} className="p-3.5 rounded-2xl bg-[#FAF7F2] border border-[#E5DBCA] space-y-3 shadow-xs">
+                    {/* Top Row: User Avatar, Name, Phone & Status */}
+                    <div className="flex items-start justify-between gap-2.5">
+                      <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                        <div className="relative shrink-0">
+                          <div className="w-11 h-11 rounded-full bg-gradient-to-tr from-[#F472B6] to-[#E07A5F] border border-[#E5DBCA] flex items-center justify-center font-bold text-sm text-white uppercase overflow-hidden shadow-2xs">
+                            {u.photoUrl ? (
+                              <img src={u.photoUrl} alt={u.name || 'User'} className="w-full h-full object-cover" />
+                            ) : (
+                              (u.name || 'U').charAt(0)
+                            )}
                           </div>
-
-                          <div>
-                            <p className="font-bold text-[#2D2522] flex items-center gap-1.5">
-                              <span>{u.name || 'User'}</span>
-                            </p>
-                            <p className="text-xs font-mono font-bold text-[#EA580C]">
-                              {u.phone || '—'}
-                            </p>
-                          </div>
+                          <span 
+                            className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-white shadow-xs ${
+                              isUserActive ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'
+                            }`} 
+                          />
                         </div>
-                      </td>
 
-                      {/* 2. ACTIVITY STATUS & EXACT ACTIVE HOURS */}
-                      <td className="py-3.5 pr-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-bold text-[#2D2522] text-sm truncate">
+                            {u.name || 'User'}
+                          </p>
+                          <p className="text-xs font-mono font-bold text-[#EA580C] truncate">
+                            {u.phone || '—'}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Status Badge */}
+                      <div className="shrink-0 text-right">
                         {isUserActive ? (
-                          <div className="space-y-1">
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-black shadow-2xs">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
-                              {lang === 'mr' ? 'सक्रिय (Active)' : lang === 'hi' ? 'सक्रिय (Active)' : 'Active (Online)'}
-                            </span>
-                            <p className="text-[11px] font-semibold text-slate-700 flex items-center gap-1">
-                              <Clock className="w-3 h-3 text-[#EA580C]" />
-                              <span>{activeInfo.text}</span>
-                            </p>
-                          </div>
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-black shadow-2xs">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+                            {lang === 'mr' ? 'सक्रिय' : 'Active'}
+                          </span>
                         ) : (
-                          <div className="space-y-1">
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200 text-[11px] font-black">
-                              <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
-                              {lang === 'mr' ? 'लॉग आउट (Logged Out)' : lang === 'hi' ? 'लॉग आउट (Logged Out)' : 'Logged Out'}
-                            </span>
-                            <p className="text-[10px] text-slate-500 font-medium flex items-center gap-1">
-                              <LogOut className="w-3 h-3 text-slate-400" />
-                              <span>{u.lastLogout ? `${lang === 'mr' ? 'लॉग आउट' : 'Logged out'}: ${formatDateTime(u.lastLogout)}` : (lang === 'mr' ? 'सत्र समाप्त (Offline)' : 'Session Ended')}</span>
-                            </p>
-                          </div>
-                        )}
-                      </td>
-
-                      {/* 3. REGISTERED DATE */}
-                      <td className="py-3.5 text-xs text-[#7A6F68] font-mono font-medium">
-                        {formatDate(u.createdAt)}
-                      </td>
-
-                      {/* 4. ACTIVE DEVICES */}
-                      <td className="py-3.5">
-                        {isUserActive ? (
-                          <div className="flex items-center gap-1.5">
-                            {devList.map((d, idx) => (
-                              <span
-                                key={d.deviceId || idx}
-                                title={`${d.deviceName} (${d.platform})`}
-                                className="p-1 rounded-lg bg-[#FAF7F2] border border-[#E5DBCA] flex items-center justify-center shadow-sm"
-                              >
-                                {getPlatformIcon(d.platform)}
-                              </span>
-                            ))}
-                            <span className="text-xs font-bold text-[#2D2522] ml-1">
-                              {devList.length} {devList.length === 1 ? 'device' : 'devices'}
-                            </span>
-                          </div>
-                        ) : (
-                          <span className="text-xs font-bold text-slate-400">
-                            0 devices ({lang === 'mr' ? 'लॉग आउट' : 'Logged Out'})
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200 text-[10px] font-black">
+                            <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                            {lang === 'mr' ? 'लॉग आउट' : 'Logged Out'}
                           </span>
                         )}
-                      </td>
+                      </div>
+                    </div>
 
-                      {/* 5. SUBSCRIPTION BADGE */}
-                      <td className="py-3.5">
-                        <Badge variant={u.subscriptionStatus === 'active' ? 'matcha' : 'secondary'} size="sm">
-                          {u.subscriptionStatus || 'none'}
-                        </Badge>
-                      </td>
+                    {/* Middle Info Grid: Active Duration, Registered Date, Devices, Subscription */}
+                    <div className="grid grid-cols-2 gap-2 p-2.5 rounded-xl bg-white border border-[#E5DBCA] text-xs">
+                      <div>
+                        <span className="text-[10px] font-bold text-[#7A6F68] block uppercase tracking-wider">
+                          {lang === 'mr' ? 'सक्रिय वेळ' : 'Active Duration'}
+                        </span>
+                        <p className="font-bold text-[#2D2522] text-[11px] truncate mt-0.5">
+                          {isUserActive ? activeInfo.text : (u.lastLogout ? `${lang === 'mr' ? 'लॉग आउट' : 'Out'}: ${formatDate(u.lastLogout)}` : 'Offline')}
+                        </p>
+                      </div>
 
-                      {/* 6. PLAN EXPIRY */}
-                      <td className="py-3.5 text-xs font-mono text-[#7A6F68]">
-                        {u.planExpiry ? formatDate(u.planExpiry) : 'None'}
-                      </td>
+                      <div>
+                        <span className="text-[10px] font-bold text-[#7A6F68] block uppercase tracking-wider">
+                          {lang === 'mr' ? 'उपकरणे' : 'Devices'}
+                        </span>
+                        <p className="font-bold text-[#2D2522] text-[11px] mt-0.5">
+                          {devList.length} {lang === 'mr' ? 'उपकरणे' : 'devices'}
+                        </p>
+                      </div>
 
-                      {/* 7. ACTIONS (Force Logout, Inspect, Delete) */}
-                      <td className="py-3.5 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          
-                          {/* Force Remote Logout Button (if currently active) */}
-                          {isUserActive && (
-                            <button
-                              onClick={() => handleForceLogout(u)}
-                              className="px-2.5 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition flex items-center gap-1 cursor-pointer shadow-2xs"
-                              title={lang === 'mr' ? 'डिव्हाइसमधून लॉग आउट करा' : 'Force Logout from Android App'}
-                            >
-                              <LogOut className="w-3.5 h-3.5 text-rose-600" />
-                              <span className="hidden xl:inline">{lang === 'mr' ? 'लॉग आउट करा' : 'Log Out'}</span>
-                            </button>
-                          )}
+                      <div>
+                        <span className="text-[10px] font-bold text-[#7A6F68] block uppercase tracking-wider">
+                          {lang === 'mr' ? 'नोंदणी तारीख' : 'Registered'}
+                        </span>
+                        <p className="font-bold text-[#7A6F68] text-[11px] mt-0.5 font-mono">
+                          {formatDate(u.createdAt)}
+                        </p>
+                      </div>
 
-                          {/* Set Active / Remote Login Button (if currently logged out) */}
-                          {!isUserActive && (
-                            <button
-                              onClick={() => handleActivateUser(u)}
-                              className="px-2.5 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-bold transition flex items-center gap-1 cursor-pointer shadow-2xs"
-                              title={lang === 'mr' ? 'सक्रिय करा (सध्याचे लॉगिन सेट करा)' : 'Set this user as Active'}
-                            >
-                              <Radio className="w-3.5 h-3.5 text-emerald-600 animate-pulse" />
-                              <span className="hidden xl:inline">{lang === 'mr' ? 'सक्रिय करा' : 'Set Active'}</span>
-                            </button>
-                          )}
-
-                          {/* Inspect User Modal Button */}
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            onClick={() => setSelectedUser(u)}
-                            className="gap-1.5 h-8 text-xs cursor-pointer"
-                          >
-                            <Eye className="w-3.5 h-3.5" />
-                            <span>{lang === 'mr' ? 'तपासा' : lang === 'hi' ? 'जांचें' : 'Inspect'}</span>
-                          </Button>
-
-                          {/* Delete User Button */}
-                          <button
-                            onClick={() => handleDeleteUser(u.id)}
-                            className="p-2 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition cursor-pointer"
-                            title={t('deleteBtn')}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                      <div>
+                        <span className="text-[10px] font-bold text-[#7A6F68] block uppercase tracking-wider">
+                          {lang === 'mr' ? 'प्लॅन' : 'Plan'}
+                        </span>
+                        <div className="mt-0.5">
+                          <Badge variant={u.subscriptionStatus === 'active' ? 'matcha' : 'secondary'} size="sm" className="text-[10px] px-2 py-0">
+                            {u.subscriptionStatus || 'free'}
+                          </Badge>
                         </div>
-                      </td>
+                      </div>
+                    </div>
 
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+                    {/* Actions Bottom Row */}
+                    <div className="flex items-center justify-between pt-1 border-t border-[#E5DBCA]/60">
+                      <div className="flex items-center gap-1.5">
+                        {isUserActive ? (
+                          <button
+                            onClick={() => handleForceLogout(u)}
+                            className="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition flex items-center gap-1 cursor-pointer active:scale-95"
+                            title={lang === 'mr' ? 'डिव्हाइसमधून लॉग आउट करा' : 'Force Logout'}
+                          >
+                            <LogOut className="w-3.5 h-3.5 text-rose-600" />
+                            <span>{lang === 'mr' ? 'लॉग आउट करा' : 'Log Out'}</span>
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleActivateUser(u)}
+                            className="px-2.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-bold transition flex items-center gap-1 cursor-pointer active:scale-95"
+                            title={lang === 'mr' ? 'सक्रिय करा' : 'Set Active'}
+                          >
+                            <Radio className="w-3.5 h-3.5 text-emerald-600 animate-pulse" />
+                            <span>{lang === 'mr' ? 'सक्रिय करा' : 'Set Active'}</span>
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-1">
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => setSelectedUser(u)}
+                          className="gap-1 h-8 text-xs px-2.5 cursor-pointer bg-white border border-[#E5DBCA]"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>{lang === 'mr' ? 'तपासा' : lang === 'hi' ? 'जांचें' : 'Inspect'}</span>
+                        </Button>
+
+                        <button
+                          onClick={() => handleDeleteUser(u.id)}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 rounded-xl hover:bg-rose-50 transition cursor-pointer"
+                          title={t('deleteBtn')}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* DESKTOP VIEW: Full Structured Table (>= 640px) */}
+            <div className="hidden sm:block overflow-x-auto">
+              <table className="w-full text-left text-sm min-w-[850px]">
+                <thead className="text-xs uppercase tracking-wider text-[#7A6F68] border-b border-[#E5DBCA]">
+                  <tr>
+                    <th className="pb-3 font-bold">{t('colUserPhone')}</th>
+                    <th className="pb-3 font-bold">{lang === 'mr' ? 'सक्रिय स्थिती व वेळ (Active Duration)' : lang === 'hi' ? 'सक्रिय स्थिति व समय' : 'Session Status & Duration'}</th>
+                    <th className="pb-3 font-bold">{t('colRegistered')}</th>
+                    <th className="pb-3 font-bold">{t('colActiveDevices')}</th>
+                    <th className="pb-3 font-bold">{t('colSubscription')}</th>
+                    <th className="pb-3 font-bold">{t('colPlanExpiry')}</th>
+                    <th className="pb-3 font-bold text-right">{t('colActions')}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#E5DBCA]/60">
+                  {filteredUsers.map((u) => {
+                    const devList = Array.isArray(u?.devices) ? u.devices : [];
+                    const isUserActive = u.sessionStatus === 'active' && u.isLoggedIn === true && devList.length > 0;
+                    const activeInfo = formatActiveHours(u.lastLogin || u.loginTime || u.createdAt, lang);
+
+                    return (
+                      <tr key={u.id} className="hover:bg-[#FAF7F2] transition-colors">
+                        
+                        {/* 1. USER & PHONE */}
+                        <td className="py-3.5 pr-4">
+                          <div className="flex items-center gap-3">
+                            <div className="relative">
+                              <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-[#F472B6] to-[#E07A5F] border border-[#E5DBCA] flex items-center justify-center font-bold text-xs text-white uppercase overflow-hidden shrink-0 shadow-soft">
+                                {u.photoUrl ? (
+                                  <img src={u.photoUrl} alt={u.name || 'User'} className="w-full h-full object-cover" />
+                                ) : (
+                                  (u.name || 'U').charAt(0)
+                                )}
+                              </div>
+                              <span 
+                                className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-white shadow-xs ${
+                                  isUserActive ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'
+                                }`} 
+                                title={isUserActive ? 'Online / Active' : 'Logged Out'}
+                              />
+                            </div>
+
+                            <div>
+                              <p className="font-bold text-[#2D2522] flex items-center gap-1.5">
+                                <span>{u.name || 'User'}</span>
+                              </p>
+                              <p className="text-xs font-mono font-bold text-[#EA580C]">
+                                {u.phone || '—'}
+                              </p>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* 2. ACTIVITY STATUS & EXACT ACTIVE HOURS */}
+                        <td className="py-3.5 pr-3">
+                          {isUserActive ? (
+                            <div className="space-y-1">
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-black shadow-2xs">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+                                {lang === 'mr' ? 'सक्रिय (Active)' : lang === 'hi' ? 'सक्रिय (Active)' : 'Active (Online)'}
+                              </span>
+                              <p className="text-[11px] font-semibold text-slate-700 flex items-center gap-1">
+                                <Clock className="w-3 h-3 text-[#EA580C]" />
+                                <span>{activeInfo.text}</span>
+                              </p>
+                            </div>
+                          ) : (
+                            <div className="space-y-1">
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200 text-[11px] font-black">
+                                <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                                {lang === 'mr' ? 'लॉग आउट (Logged Out)' : lang === 'hi' ? 'लॉग आउट (Logged Out)' : 'Logged Out'}
+                              </span>
+                              <p className="text-[10px] text-slate-500 font-medium flex items-center gap-1">
+                                <LogOut className="w-3 h-3 text-slate-400" />
+                                <span>{u.lastLogout ? `${lang === 'mr' ? 'लॉग आउट' : 'Logged out'}: ${formatDateTime(u.lastLogout)}` : (lang === 'mr' ? 'सत्र समाप्त (Offline)' : 'Session Ended')}</span>
+                              </p>
+                            </div>
+                          )}
+                        </td>
+
+                        {/* 3. REGISTERED DATE */}
+                        <td className="py-3.5 text-xs text-[#7A6F68] font-mono font-medium">
+                          {formatDate(u.createdAt)}
+                        </td>
+
+                        {/* 4. ACTIVE DEVICES */}
+                        <td className="py-3.5">
+                          {isUserActive ? (
+                            <div className="flex items-center gap-1.5">
+                              {devList.map((d, idx) => (
+                                <span
+                                  key={d.deviceId || idx}
+                                  title={`${d.deviceName} (${d.platform})`}
+                                  className="p-1 rounded-lg bg-[#FAF7F2] border border-[#E5DBCA] flex items-center justify-center shadow-sm"
+                                >
+                                  {getPlatformIcon(d.platform)}
+                                </span>
+                              ))}
+                              <span className="text-xs font-bold text-[#2D2522] ml-1">
+                                {devList.length} {devList.length === 1 ? 'device' : 'devices'}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-xs font-bold text-slate-400">
+                              0 devices ({lang === 'mr' ? 'लॉग आउट' : 'Logged Out'})
+                            </span>
+                          )}
+                        </td>
+
+                        {/* 5. SUBSCRIPTION BADGE */}
+                        <td className="py-3.5">
+                          <Badge variant={u.subscriptionStatus === 'active' ? 'matcha' : 'secondary'} size="sm">
+                            {u.subscriptionStatus || 'none'}
+                          </Badge>
+                        </td>
+
+                        {/* 6. PLAN EXPIRY */}
+                        <td className="py-3.5 text-xs font-mono text-[#7A6F68]">
+                          {u.planExpiry ? formatDate(u.planExpiry) : 'None'}
+                        </td>
+
+                        {/* 7. ACTIONS (Force Logout, Inspect, Delete) */}
+                        <td className="py-3.5 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            {isUserActive && (
+                              <button
+                                onClick={() => handleForceLogout(u)}
+                                className="px-2.5 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition flex items-center gap-1 cursor-pointer shadow-2xs"
+                                title={lang === 'mr' ? 'डिव्हाइसमधून लॉग आउट करा' : 'Force Logout from Android App'}
+                              >
+                                <LogOut className="w-3.5 h-3.5 text-rose-600" />
+                                <span className="hidden xl:inline">{lang === 'mr' ? 'लॉग आउट करा' : 'Log Out'}</span>
+                              </button>
+                            )}
+
+                            {!isUserActive && (
+                              <button
+                                onClick={() => handleActivateUser(u)}
+                                className="px-2.5 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-bold transition flex items-center gap-1 cursor-pointer shadow-2xs"
+                                title={lang === 'mr' ? 'सक्रिय करा (सध्याचे लॉगिन सेट करा)' : 'Set this user as Active'}
+                              >
+                                <Radio className="w-3.5 h-3.5 text-emerald-600 animate-pulse" />
+                                <span className="hidden xl:inline">{lang === 'mr' ? 'सक्रिय करा' : 'Set Active'}</span>
+                              </button>
+                            )}
+
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => setSelectedUser(u)}
+                              className="gap-1.5 h-8 text-xs cursor-pointer"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              <span>{lang === 'mr' ? 'तपासा' : lang === 'hi' ? 'जांचें' : 'Inspect'}</span>
+                            </Button>
+
+                            <button
+                              onClick={() => handleDeleteUser(u.id)}
+                              className="p-2 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition cursor-pointer"
+                              title={t('deleteBtn')}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
       </div>
 
       {/* 5. INSPECT USER MODAL WITH FULL SESSION BREAKDOWN */}
