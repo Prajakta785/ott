@@ -20,7 +20,6 @@ import {
   Zap,
   Trash2,
   Headphones,
-  VolumeX,
   Music
 } from 'lucide-react';
 import { StatsCard } from '@/components/stats-card';
@@ -283,15 +282,10 @@ export default function DashboardPage() {
                           <p className="font-bold text-[#2D2522] text-sm">{item.title}</p>
                           <div className="flex items-center gap-2 mt-0.5">
                             <p className="text-xs text-[#7A6F68]">{item.director || 'ग्रामीण भारत'} · {item.releaseDate?.substring(0, 4)}</p>
-                            {item.audioUrl ? (
+                            {item.audioUrl && (
                               <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full shadow-2xs">
                                 <Headphones className="w-2.5 h-2.5 text-emerald-600" />
                                 <span>{lang === 'mr' ? 'ऑडिओ जोडला' : 'Audio Connected'}</span>
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full shadow-2xs">
-                                <VolumeX className="w-2.5 h-2.5 text-amber-600" />
-                                <span>{lang === 'mr' ? 'ऑडिओ नाही' : 'No Audio'}</span>
                               </span>
                             )}
                           </div>
