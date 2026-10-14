@@ -61,7 +61,7 @@ export default function DashboardLayout({
         <Header 
           onToggleSidebar={() => setIsMobileSidebarOpen(prev => !prev)} 
         />
-        <main className="flex-1 overflow-y-auto p-3 sm:p-6 lg:p-8 pb-24 sm:pb-8 max-w-7xl w-full mx-auto">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-6 lg:p-8 pb-24 sm:pb-8 max-w-7xl w-full mx-auto">
           {isAllowed ? (
             children
           ) : (

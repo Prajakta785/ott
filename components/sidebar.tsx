@@ -17,7 +17,6 @@ import {
   Megaphone, 
   BarChart3, 
   Radio, 
-  IndianRupee, 
   Bell, 
   Building2, 
   Headphones, 
@@ -387,7 +386,6 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const operationsNavigation = [
     { name: t('navGrievancesAdmin'), href: '/admin/grievances', icon: Megaphone, badgeKey: 'badgeCitizen' as const, badgeColor: 'bg-amber-50 text-amber-700 border-amber-200/80' },
     { name: t('navNotifications'), href: '/admin/notifications', icon: Bell, badgeKey: 'badgeFCM' as const, badgeColor: 'bg-orange-50 text-orange-700 border-orange-200/80' },
-    { name: t('navAds'), href: '/admin/ads', icon: IndianRupee, badgeKey: 'badgeMonetization' as const, badgeColor: 'bg-blue-50 text-blue-700 border-blue-200/80' },
     { name: t('navBanners'), href: '/admin/banners', icon: Layers },
     { name: t('navPlansAdmin'), href: '/admin/plans', icon: CreditCard },
     { name: t('navUsers'), href: '/admin/users', icon: Users },

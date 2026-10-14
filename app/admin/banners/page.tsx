@@ -159,57 +159,57 @@ export default function BannersPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="space-y-4 sm:space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-black text-[#2D2522] tracking-tight flex items-center gap-2.5">
-            <Layers className="w-7 h-7 text-[#E11D48]" />
+          <h1 className="text-xl sm:text-3xl font-black text-[#2D2522] tracking-tight flex items-center gap-2 sm:gap-2.5">
+            <Layers className="w-6 h-6 sm:w-7 sm:h-7 text-[#E11D48]" />
             {t('bannersTitle')}
           </h1>
-          <p className="text-sm text-[#7A6F68] mt-1">
+          <p className="text-xs sm:text-sm text-[#7A6F68] mt-1">
             {t('bannersSubtitle')}
           </p>
         </div>
         {canEdit && (
-          <Button variant="primary" onClick={handleOpenCreate} className="gap-2 shadow-sm">
+          <Button variant="primary" onClick={handleOpenCreate} className="gap-2 shadow-sm w-full sm:w-auto justify-center">
             <Plus className="w-4 h-4" /> {t('addHeroBanner')}
           </Button>
         )}
       </div>
 
       {/* Live Preview Simulator */}
-      <div className="rounded-3xl bg-white border border-[#E5DBCA] p-6 shadow-soft space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-extrabold uppercase tracking-wider text-[#2D2522] flex items-center gap-2">
+      <div className="rounded-2xl sm:rounded-3xl bg-white border border-[#E5DBCA] p-3.5 sm:p-6 shadow-soft space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="text-xs sm:text-sm font-extrabold uppercase tracking-wider text-[#2D2522] flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-[#F472B6]" /> {t('liveHeroPreviewTitle')}
           </h3>
-          <span className="text-xs text-[#7A6F68] font-medium">{t('autoCyclingSubtitle')}</span>
+          <span className="text-[11px] sm:text-xs text-[#7A6F68] font-medium">{t('autoCyclingSubtitle')}</span>
         </div>
 
         {banners.filter(b => b.active).length > 0 ? (
-          <div className="relative aspect-[21/9] w-full rounded-3xl overflow-hidden border border-[#E5DBCA] shadow-soft-lg">
+          <div className="relative aspect-[16/9] sm:aspect-[21/9] w-full rounded-2xl sm:rounded-3xl overflow-hidden border border-[#E5DBCA] shadow-soft-lg">
             <img
               src={banners.filter(b => b.active)[0]?.imageUrl}
               alt="Hero Preview"
               className="w-full h-full object-cover"
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent flex flex-col justify-end p-8">
+            <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent flex flex-col justify-end p-4 sm:p-8">
               {localizeBanner(banners.filter(b => b.active)[0]).badge && (
-                <span className="text-xs font-bold text-white bg-[#F472B6] px-3 py-1 rounded-full w-fit mb-2 shadow-sm">
+                <span className="text-[10px] sm:text-xs font-bold text-white bg-[#F472B6] px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-full w-fit mb-1.5 sm:mb-2 shadow-sm">
                   {localizeBanner(banners.filter(b => b.active)[0]).badge}
                 </span>
               )}
-              <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight">
+              <h2 className="text-lg sm:text-4xl font-black text-white tracking-tight line-clamp-1 sm:line-clamp-none">
                 {localizeBanner(banners.filter(b => b.active)[0]).title}
               </h2>
-              <p className="text-sm text-zinc-200 max-w-xl mt-1">
+              <p className="text-xs sm:text-sm text-zinc-200 max-w-xl mt-1 line-clamp-2">
                 {localizeBanner(banners.filter(b => b.active)[0]).subtitle}
               </p>
-              <div className="flex items-center gap-3 mt-4">
-                <button className="px-5 py-2.5 rounded-full bg-white text-[#2D2522] font-extrabold text-sm flex items-center gap-2 shadow-soft hover:bg-[#FAF7F2]">
-                  <Play className="w-4 h-4 fill-[#2D2522]" /> {t('watchNow')}
+              <div className="flex items-center gap-2 sm:gap-3 mt-3 sm:mt-4">
+                <button className="px-3.5 sm:px-5 py-1.5 sm:py-2.5 rounded-full bg-white text-[#2D2522] font-extrabold text-xs sm:text-sm flex items-center gap-1.5 sm:gap-2 shadow-soft hover:bg-[#FAF7F2]">
+                  <Play className="w-3.5 h-3.5 sm:w-4 sm:h-4 fill-[#2D2522]" /> {t('watchNow')}
                 </button>
-                <button className="px-5 py-2.5 rounded-full bg-black/40 backdrop-blur-md text-white font-bold text-sm border border-white/30 hover:bg-black/60">
+                <button className="px-3.5 sm:px-5 py-1.5 sm:py-2.5 rounded-full bg-black/40 backdrop-blur-md text-white font-bold text-xs sm:text-sm border border-white/30 hover:bg-black/60">
                   {t('moreInfo')}
                 </button>
               </div>
@@ -221,8 +221,8 @@ export default function BannersPage() {
       </div>
 
       {/* Banners Reorderable List */}
-      <div className="rounded-3xl bg-white border border-[#E5DBCA] p-6 shadow-soft space-y-4">
-        <h3 className="text-base font-extrabold text-[#2D2522]">{t('configuredBannersQueue')} ({banners.length})</h3>
+      <div className="rounded-2xl sm:rounded-3xl bg-white border border-[#E5DBCA] p-3 sm:p-6 shadow-soft space-y-4">
+        <h3 className="text-sm sm:text-base font-extrabold text-[#2D2522]">{t('configuredBannersQueue')} ({banners.length})</h3>
 
         <div className="space-y-3">
           {banners.map((banner, index) => {
@@ -231,15 +231,16 @@ export default function BannersPage() {
             return (
               <div
                 key={banner.id}
-                className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl bg-[#FAF7F2] border border-[#E5DBCA] hover:border-[#F472B6] transition-colors"
+                className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 p-3 sm:p-4 rounded-2xl bg-[#FAF7F2] border border-[#E5DBCA] hover:border-[#F472B6] transition-all shadow-xs"
               >
-                <div className="flex items-center gap-4">
+                <div className="flex items-start gap-2.5 sm:gap-4 min-w-0 flex-1">
                   {/* Order handle */}
-                  <div className="flex flex-col items-center gap-1 text-[#7A6F68]">
+                  <div className="flex flex-col items-center justify-center gap-0.5 sm:gap-1 text-[#7A6F68] bg-white sm:bg-transparent rounded-xl p-1 sm:p-0 border sm:border-0 border-[#E5DBCA] shrink-0 min-w-[28px]">
                     <button
                       onClick={() => handleMove(index, 'up')}
                       disabled={index === 0}
-                      className="hover:text-[#2D2522] disabled:opacity-20 p-1"
+                      className="hover:text-[#2D2522] disabled:opacity-20 p-1 rounded hover:bg-[#FAF7F2] transition active:scale-95 cursor-pointer"
+                      title="Move up"
                     >
                       <MoveUp className="w-3.5 h-3.5" />
                     </button>
@@ -247,56 +248,82 @@ export default function BannersPage() {
                     <button
                       onClick={() => handleMove(index, 'down')}
                       disabled={index === banners.length - 1}
-                      className="hover:text-[#2D2522] disabled:opacity-20 p-1"
+                      className="hover:text-[#2D2522] disabled:opacity-20 p-1 rounded hover:bg-[#FAF7F2] transition active:scale-95 cursor-pointer"
+                      title="Move down"
                     >
                       <MoveDown className="w-3.5 h-3.5" />
                     </button>
                   </div>
 
-                  <div className="w-24 h-14 rounded-xl overflow-hidden bg-[#F5EFE6] border border-[#E5DBCA] shrink-0 shadow-sm">
+                  {/* Thumbnail */}
+                  <div className="w-20 h-14 sm:w-28 sm:h-16 rounded-xl overflow-hidden bg-[#F5EFE6] border border-[#E5DBCA] shrink-0 shadow-xs relative">
                     <img src={banner.imageUrl} alt={loc.title} className="w-full h-full object-cover" />
                   </div>
 
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h4 className="font-bold text-[#2D2522] text-sm">{loc.title}</h4>
-                      {loc.badge && <Badge variant="sakura" size="sm">{loc.badge}</Badge>}
-                      <Badge variant={banner.active ? 'matcha' : 'secondary'} size="sm">
+                  {/* Info */}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                      <h4 className="font-bold text-[#2D2522] text-sm sm:text-base leading-snug">
+                        {loc.title}
+                      </h4>
+                      {loc.badge && (
+                        <Badge 
+                          variant="sakura" 
+                          size="sm" 
+                          className="text-[10px] sm:text-xs px-2 py-0.5 max-w-[140px] sm:max-w-none truncate"
+                          title={loc.badge}
+                        >
+                          {loc.badge}
+                        </Badge>
+                      )}
+                      <Badge 
+                        variant={banner.active ? 'matcha' : 'secondary'} 
+                        size="sm" 
+                        className="text-[10px] sm:text-xs px-2 py-0.5 shrink-0"
+                      >
                         {banner.active ? t('bannerActive') : t('bannerDisabled')}
                       </Badge>
                     </div>
-                    <p className="text-xs text-[#7A6F68] mt-0.5 line-clamp-1">{loc.subtitle}</p>
-                    <p className="text-[11px] text-[#A89C94] mt-1">
-                      {t('linkedToContent')} <span className="text-[#BE123C] font-semibold">{linked?.title || banner.contentId}</span>
+                    <p className="text-xs text-[#7A6F68] mt-1 line-clamp-1 sm:line-clamp-2 leading-relaxed">
+                      {loc.subtitle}
+                    </p>
+                    <p className="text-[11px] text-[#A89C94] mt-1 truncate">
+                      {t('linkedToContent')}{' '}
+                      <span className="text-[#BE123C] font-semibold">{linked?.title || banner.contentId}</span>
                     </p>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 self-end sm:self-center">
+                {/* Actions row on mobile, inline on desktop */}
+                <div className="flex items-center justify-between sm:justify-end gap-2 pt-2.5 sm:pt-0 border-t sm:border-t-0 border-[#E5DBCA]/60 shrink-0">
                   <Button
                     size="sm"
                     variant={banner.active ? 'outline' : 'secondary'}
                     onClick={() => handleToggleActive(banner)}
-                    className="text-xs h-8"
+                    className="text-xs h-8 px-3 cursor-pointer"
                   >
                     {banner.active ? t('deactivateAction') : t('activateAction')}
                   </Button>
-                  {canEdit && (
-                    <button
-                      onClick={() => handleOpenEdit(banner)}
-                      className="p-2 rounded-full text-[#7A6F68] hover:text-[#2D2522] hover:bg-white"
-                    >
-                      <Edit className="w-4 h-4" />
-                    </button>
-                  )}
-                  {canDelete && (
-                    <button
-                      onClick={() => setBannerToDelete(banner)}
-                      className="p-2 rounded-full text-[#7A6F68] hover:text-[#BE123C] hover:bg-[#FEE2E2]"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  )}
+                  <div className="flex items-center gap-1">
+                    {canEdit && (
+                      <button
+                        onClick={() => handleOpenEdit(banner)}
+                        className="p-2 rounded-xl text-[#7A6F68] hover:text-[#2D2522] hover:bg-white border border-transparent hover:border-[#E5DBCA] transition cursor-pointer"
+                        title={t('editHeroBanner')}
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
+                    )}
+                    {canDelete && (
+                      <button
+                        onClick={() => setBannerToDelete(banner)}
+                        className="p-2 rounded-xl text-[#7A6F68] hover:text-[#BE123C] hover:bg-[#FEE2E2] border border-transparent hover:border-[#FECACA] transition cursor-pointer"
+                        title={t('deleteBannerTitle')}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             );
