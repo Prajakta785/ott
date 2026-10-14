@@ -112,37 +112,51 @@ export default function LoginPage() {
       {/* Dynamic Animated Ambient Background Glows */}
       <div className="absolute -top-40 -left-40 w-[500px] h-[500px] rounded-full bg-gradient-to-br from-amber-400/25 via-orange-300/15 to-transparent blur-3xl pointer-events-none animate-blob" />
       <div className="absolute -bottom-40 -right-40 w-[520px] h-[520px] rounded-full bg-gradient-to-tl from-emerald-500/20 via-teal-400/15 to-transparent blur-3xl pointer-events-none animate-blob [animation-delay:3s]" />
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[650px] h-[650px] rounded-full bg-gradient-to-tr from-amber-200/20 via-rose-200/15 to-transparent blur-3xl pointer-events-none animate-pulse [animation-duration:8s]" />
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] rounded-full bg-gradient-to-tr from-amber-200/30 via-rose-200/20 to-transparent blur-3xl pointer-events-none" />
 
-      {/* Subtle Dot Matrix Pattern */}
-      <div className="absolute inset-0 bg-[radial-gradient(#D97706_1px,transparent_1px)] [background-size:24px_24px] opacity-[0.035] pointer-events-none" />
+      {/* Visible Decorative Pattern */}
+      <div className="absolute inset-0 bg-[linear-gradient(to_right,#E5DBCA40_1px,transparent_1px),linear-gradient(to_bottom,#E5DBCA40_1px,transparent_1px)] bg-[size:32px_32px] pointer-events-none" />
 
-      {/* Top Bar with Language Switcher */}
-      <header className="relative z-10 w-full max-w-7xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-end">
+      {/* Top Bar with Brand & Language Switcher */}
+      <header className="relative z-10 w-full max-w-7xl mx-auto px-4 sm:px-8 py-5 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-white border border-[#E5DBCA] p-1 shadow-xs flex items-center justify-center">
+            <img src="/logo.png" alt="ग्रामीण भारत TV" className="w-full h-full object-contain" />
+          </div>
+          <div>
+            <h2 className="text-sm sm:text-base font-black text-[#2D2522] tracking-tight leading-none">
+              ग्रामीण भारत TV
+            </h2>
+            <p className="text-[10px] sm:text-xs text-[#7A6F68] font-bold mt-0.5">
+              OTT Console • Admin Portal
+            </p>
+          </div>
+        </div>
+
         <div className="flex items-center gap-2">
           <LanguageSwitcher variant="light" mode="segmented" />
         </div>
       </header>
 
       {/* Main Login Card Center */}
-      <main className="relative z-10 flex-1 flex items-center justify-center p-3 sm:p-4">
-        <div className="w-full max-w-[450px] bg-white/95 backdrop-blur-xl border border-[#E5DBCA]/90 rounded-2xl sm:rounded-3xl shadow-[0_20px_50px_-10px_rgba(217,119,6,0.14),0_10px_25px_-5px_rgba(45,37,34,0.06)] p-5 sm:p-6 space-y-4 relative overflow-hidden animate-box-enter hover:shadow-[0_25px_60px_-10px_rgba(217,119,6,0.2),0_12px_30px_-5px_rgba(45,37,34,0.08)] transition-all duration-300">
+      <main className="relative z-10 flex-1 flex items-center justify-center p-4 sm:p-8 my-auto">
+        <div className="w-full max-w-[500px] bg-white border border-[#E5DBCA] rounded-3xl shadow-[0_25px_60px_-15px_rgba(217,119,6,0.18),0_15px_30px_-10px_rgba(45,37,34,0.08)] p-6 sm:p-10 space-y-6 relative overflow-hidden transition-all duration-300">
           {/* Animated Accent Gradient Top Line */}
-          <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-[#D97706] via-[#EA580C] to-[#166534] bg-[length:200%_100%] animate-gradient-flow" />
+          <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-[#D97706] via-[#EA580C] to-[#166534] bg-[length:200%_100%] animate-gradient-flow" />
 
           {/* Brand Logo & Header */}
-          <div className="text-center space-y-1 pt-0.5">
-            <div className="w-12 h-12 rounded-xl bg-white border border-[#E5DBCA] p-1 mx-auto flex items-center justify-center shadow-xs transition-transform duration-300 hover:scale-105">
+          <div className="text-center space-y-2 pt-1">
+            <div className="w-16 h-16 rounded-2xl bg-[#FAF7F2] border border-[#E5DBCA] p-2 mx-auto flex items-center justify-center shadow-xs transition-transform duration-300 hover:scale-105">
               <img src="/logo.png" alt="ग्रामीण भारत TV" className="w-full h-full object-contain" />
             </div>
             <div>
-              <span className="px-2 py-0.5 rounded-full bg-[#FFFBEB] text-[#D97706] border border-[#FDE68A] text-[9.5px] font-bold uppercase tracking-wider">
+              <span className="inline-block px-3 py-1 rounded-full bg-[#FFFBEB] text-[#D97706] border border-[#FDE68A] text-[10.5px] font-extrabold uppercase tracking-wider shadow-2xs">
                 {lang === 'mr' ? 'प्रशासक पोर्टल' : lang === 'hi' ? 'व्यवस्थापक पोर्टल' : 'Admin Portal'}
               </span>
-              <h1 className="text-lg sm:text-xl font-black text-[#2D2522] mt-1 tracking-tight">
+              <h1 className="text-2xl sm:text-3xl font-black text-[#2D2522] mt-2 tracking-tight">
                 {lang === 'mr' ? 'स्वागत आहे' : lang === 'hi' ? 'स्वागत है' : 'Welcome Back'}
               </h1>
-              <p className="text-[11px] text-[#7A6F68] font-medium mt-0.5">
+              <p className="text-xs sm:text-sm text-[#7A6F68] font-medium mt-1 leading-relaxed max-w-sm mx-auto">
                 {lang === 'mr'
                   ? 'ग्रामीण भारत टीव्ही कन्सोलमध्ये प्रवेश करण्यासाठी माहिती भरा'
                   : lang === 'hi'
@@ -154,77 +168,77 @@ export default function LoginPage() {
 
           {/* Error Alert Box */}
           {errorMessage && (
-            <div className="p-2.5 rounded-xl bg-[#FFF1F2] border border-[#FFE4E6] text-[#DC2626] flex items-start gap-2 text-[11px] font-semibold animate-in fade-in duration-200">
-              <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5 text-[#DC2626]" />
+            <div className="p-3.5 rounded-2xl bg-[#FFF1F2] border border-[#FFE4E6] text-[#DC2626] flex items-start gap-2.5 text-xs font-semibold animate-in fade-in duration-200">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-[#DC2626]" />
               <div className="flex-1 leading-relaxed">{errorMessage}</div>
             </div>
           )}
 
           {/* Login Form */}
-          <form onSubmit={handleSubmit} className="space-y-3">
+          <form onSubmit={handleSubmit} className="space-y-4">
             {/* Email Field */}
-            <div className="space-y-1">
-              <label className="block text-[11px] font-bold text-[#2D2522]">
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-[#2D2522]">
                 {lang === 'mr' ? 'ईमेल किंवा वापरकर्ता नाव' : lang === 'hi' ? 'ईमेल या उपयोगकर्ता नाम' : 'Email or Username'}
               </label>
               <div className="relative">
-                <Mail className="w-3.5 h-3.5 text-[#7A6F68] absolute left-3 top-1/2 -translate-y-1/2" />
+                <Mail className="w-4 h-4 text-[#7A6F68] absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="admin@graminbharat.tv"
                   autoComplete="username"
-                  className="w-full bg-[#FAF7F2] border border-[#E5DBCA] rounded-lg pl-9 pr-3 py-2 text-xs font-semibold text-[#0F172A] placeholder-[#9CA3AF] focus:outline-none focus:border-[#166534] focus:ring-2 focus:ring-[#166534]/15 focus:bg-white transition-all shadow-2xs"
+                  className="w-full bg-[#FAF7F2] border border-[#E5DBCA] rounded-xl pl-10 pr-4 py-2.5 sm:py-3 text-sm font-semibold text-[#0F172A] placeholder-[#9CA3AF] focus:outline-none focus:border-[#166534] focus:ring-2 focus:ring-[#166534]/15 focus:bg-white transition-all shadow-2xs"
                 />
               </div>
             </div>
 
             {/* Password Field */}
-            <div className="space-y-1">
+            <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <label className="block text-[11px] font-bold text-[#2D2522]">
+                <label className="block text-xs font-bold text-[#2D2522]">
                   {lang === 'mr' ? 'संकेतशब्द (Password)' : lang === 'hi' ? 'पासवर्ड (Password)' : 'Password'}
                 </label>
                 <button
                   type="button"
                   onClick={() => setShowForgotModal(true)}
-                  className="text-[10.5px] font-bold text-[#D97706] hover:text-[#B45309] hover:underline cursor-pointer"
+                  className="text-xs font-bold text-[#D97706] hover:text-[#B45309] hover:underline cursor-pointer"
                 >
                   {lang === 'mr' ? 'पासवर्ड विसरलात?' : lang === 'hi' ? 'पासवर्ड भूल गए?' : 'Forgot Password?'}
                 </button>
               </div>
               <div className="relative">
-                <Lock className="w-3.5 h-3.5 text-[#7A6F68] absolute left-3 top-1/2 -translate-y-1/2" />
+                <Lock className="w-4 h-4 text-[#7A6F68] absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
                   autoComplete="current-password"
-                  className="w-full bg-[#FAF7F2] border border-[#E5DBCA] rounded-lg pl-9 pr-9 py-2 text-xs font-semibold text-[#0F172A] placeholder-[#9CA3AF] focus:outline-none focus:border-[#166534] focus:ring-2 focus:ring-[#166534]/15 focus:bg-white transition-all shadow-2xs"
+                  className="w-full bg-[#FAF7F2] border border-[#E5DBCA] rounded-xl pl-10 pr-10 py-2.5 sm:py-3 text-sm font-semibold text-[#0F172A] placeholder-[#9CA3AF] focus:outline-none focus:border-[#166534] focus:ring-2 focus:ring-[#166534]/15 focus:bg-white transition-all shadow-2xs"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#7A6F68] hover:text-[#2D2522] cursor-pointer"
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#7A6F68] hover:text-[#2D2522] cursor-pointer"
                   title={showPassword ? 'Hide password' : 'Show password'}
                 >
-                  {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
             </div>
 
             {/* Remember Me Checkbox */}
-            <div className="flex items-center justify-between pt-0.5">
-              <label className="flex items-center gap-1.5 cursor-pointer select-none">
+            <div className="flex items-center justify-between pt-1">
+              <label className="flex items-center gap-2 cursor-pointer select-none">
                 <input
                   type="checkbox"
                   checked={rememberMe}
                   onChange={(e) => setRememberMe(e.target.checked)}
-                  className="w-3.5 h-3.5 rounded border-[#E5DBCA] text-[#166534] focus:ring-[#166534] cursor-pointer"
+                  className="w-4 h-4 rounded border-[#E5DBCA] text-[#166534] focus:ring-[#166534] cursor-pointer"
                 />
-                <span className="text-[11px] font-semibold text-[#7A6F68]">
+                <span className="text-xs font-semibold text-[#7A6F68]">
                   {lang === 'mr' ? 'माझे लॉगिन लक्षात ठेवा' : lang === 'hi' ? 'मुझे याद रखें' : 'Remember Me'}
                 </span>
               </label>
@@ -234,16 +248,16 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-2.5 px-3.5 rounded-xl bg-gradient-to-r from-[#166534] via-[#15803D] to-[#14532D] hover:from-[#14532D] hover:to-[#052E16] text-white text-xs font-bold transition-all duration-200 shadow-md hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              className="w-full py-3 sm:py-3.5 px-4 rounded-xl bg-gradient-to-r from-[#166534] via-[#15803D] to-[#14532D] hover:from-[#14532D] hover:to-[#052E16] text-white text-sm font-bold transition-all duration-200 shadow-md hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-50"
             >
               {loading ? (
                 <>
-                  <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                   <span>{lang === 'mr' ? 'तपासत आहे...' : lang === 'hi' ? 'जांच हो रही है...' : 'Authenticating...'}</span>
                 </>
               ) : (
                 <>
-                  <ShieldCheck className="w-3.5 h-3.5" />
+                  <ShieldCheck className="w-4 h-4" />
                   <span>
                     {lang === 'mr' ? 'प्रशासक पॅनेलमध्ये प्रवेश करा' : lang === 'hi' ? 'व्यवस्थापक पैनल में प्रवेश करें' : 'Login to Admin Panel'}
                   </span>
@@ -294,8 +308,13 @@ export default function LoginPage() {
       )}
 
       {/* Footer */}
-      <footer className="relative z-10 w-full text-center py-4 text-xs text-[#7A6F68]">
-        © 2026 Gramin Bharat TV Entertainment And Media Private Limited. All rights reserved.
+      <footer className="relative z-10 w-full text-center py-5 px-4 text-xs text-[#7A6F68] space-y-1">
+        <p className="font-semibold">
+          © 2026 Gramin Bharat TV Entertainment And Media Private Limited. All rights reserved.
+        </p>
+        <p className="text-[11px] text-[#A89C94]">
+          🔒 256-Bit SSL Encrypted Admin Console
+        </p>
       </footer>
     </div>
   );
