@@ -229,87 +229,153 @@ export default function BannersPage() {
             const linked = contentList.find(c => c.id === banner.contentId);
             const loc = localizeBanner(banner);
             return (
-              <div
-                key={banner.id}
-                className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 p-3 sm:p-4 rounded-2xl bg-[#FAF7F2] border border-[#E5DBCA] hover:border-[#F472B6] transition-all shadow-xs"
-              >
-                <div className="flex items-start gap-2.5 sm:gap-4 min-w-0 flex-1">
-                  {/* Order handle */}
-                  <div className="flex flex-col items-center justify-center gap-0.5 sm:gap-1 text-[#7A6F68] bg-white sm:bg-transparent rounded-xl p-1 sm:p-0 border sm:border-0 border-[#E5DBCA] shrink-0 min-w-[28px]">
-                    <button
-                      onClick={() => handleMove(index, 'up')}
-                      disabled={index === 0}
-                      className="hover:text-[#2D2522] disabled:opacity-20 p-1 rounded hover:bg-[#FAF7F2] transition active:scale-95 cursor-pointer"
-                      title="Move up"
-                    >
-                      <MoveUp className="w-3.5 h-3.5" />
-                    </button>
-                    <span className="font-mono text-xs font-bold text-[#2D2522]">{banner.order}</span>
-                    <button
-                      onClick={() => handleMove(index, 'down')}
-                      disabled={index === banners.length - 1}
-                      className="hover:text-[#2D2522] disabled:opacity-20 p-1 rounded hover:bg-[#FAF7F2] transition active:scale-95 cursor-pointer"
-                      title="Move down"
-                    >
-                      <MoveDown className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-
-                  {/* Thumbnail */}
-                  <div className="w-20 h-14 sm:w-28 sm:h-16 rounded-xl overflow-hidden bg-[#F5EFE6] border border-[#E5DBCA] shrink-0 shadow-xs relative">
-                    <img src={banner.imageUrl} alt={loc.title} className="w-full h-full object-cover" />
-                  </div>
-
-                  {/* Info */}
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-                      <h4 className="font-bold text-[#2D2522] text-sm sm:text-base leading-snug">
-                        {loc.title}
-                      </h4>
-                      {loc.badge && (
-                        <Badge 
-                          variant="sakura" 
-                          size="sm" 
-                          className="text-[10px] sm:text-xs px-2 py-0.5 max-w-[140px] sm:max-w-none truncate"
-                          title={loc.badge}
+              <React.Fragment key={banner.id}>
+                {/* MOBILE VIEW CARD (< 640px) */}
+                <div className="sm:hidden flex flex-col gap-3 p-3.5 rounded-2xl bg-[#FAF7F2] border border-[#E5DBCA] hover:border-[#F472B6] transition-all shadow-xs">
+                  {/* Top Bar: Order & Badges */}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="inline-flex items-center gap-1.5 bg-white border border-[#E5DBCA] rounded-xl px-2 py-1 shadow-2xs">
+                      <span className="text-[10px] font-bold text-[#7A6F68] uppercase tracking-wider">{lang === 'mr' ? 'क्रम' : 'Order'}:</span>
+                      <span className="font-mono text-xs font-black text-[#2D2522]">#{banner.order}</span>
+                      <div className="flex items-center gap-0.5 ml-1 border-l border-[#E5DBCA] pl-1">
+                        <button
+                          onClick={() => handleMove(index, 'up')}
+                          disabled={index === 0}
+                          className="hover:text-[#2D2522] disabled:opacity-20 p-0.5 rounded hover:bg-[#FAF7F2] active:scale-90"
+                          title="Move up"
                         >
+                          <MoveUp className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleMove(index, 'down')}
+                          disabled={index === banners.length - 1}
+                          className="hover:text-[#2D2522] disabled:opacity-20 p-0.5 rounded hover:bg-[#FAF7F2] active:scale-90"
+                          title="Move down"
+                        >
+                          <MoveDown className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                      {loc.badge && (
+                        <Badge variant="sakura" size="sm" className="text-[10px] px-2 py-0.5 font-bold">
                           {loc.badge}
                         </Badge>
                       )}
-                      <Badge 
-                        variant={banner.active ? 'matcha' : 'secondary'} 
-                        size="sm" 
-                        className="text-[10px] sm:text-xs px-2 py-0.5 shrink-0"
-                      >
+                      <Badge variant={banner.active ? 'matcha' : 'secondary'} size="sm" className="text-[10px] px-2 py-0.5 font-bold">
                         {banner.active ? t('bannerActive') : t('bannerDisabled')}
                       </Badge>
                     </div>
-                    <p className="text-xs text-[#7A6F68] mt-1 line-clamp-1 sm:line-clamp-2 leading-relaxed">
-                      {loc.subtitle}
+                  </div>
+
+                  {/* Banner Artwork Preview */}
+                  <div className="w-full aspect-[16/9] rounded-xl overflow-hidden bg-[#F5EFE6] border border-[#E5DBCA] shadow-2xs relative">
+                    <img src={banner.imageUrl} alt={loc.title} className="w-full h-full object-cover" />
+                  </div>
+
+                  {/* Details */}
+                  <div className="space-y-1">
+                    <h4 className="font-extrabold text-[#2D2522] text-base leading-tight">
+                      {loc.title}
+                    </h4>
+                    {loc.subtitle && (
+                      <p className="text-xs text-[#7A6F68] leading-relaxed line-clamp-2">
+                        {loc.subtitle}
+                      </p>
+                    )}
+                    <p className="text-[11px] text-[#A89C94] pt-0.5 truncate">
+                      {t('linkedToContent')}: <span className="text-[#BE123C] font-semibold">{linked?.title || banner.contentId}</span>
                     </p>
-                    <p className="text-[11px] text-[#A89C94] mt-1 truncate">
-                      {t('linkedToContent')}{' '}
-                      <span className="text-[#BE123C] font-semibold">{linked?.title || banner.contentId}</span>
-                    </p>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="flex items-center justify-between pt-2.5 border-t border-[#E5DBCA]/70">
+                    <Button
+                      size="sm"
+                      variant={banner.active ? 'outline' : 'secondary'}
+                      onClick={() => handleToggleActive(banner)}
+                      className="text-xs h-8 px-3.5 font-bold cursor-pointer"
+                    >
+                      {banner.active ? t('deactivateAction') : t('activateAction')}
+                    </Button>
+                    <div className="flex items-center gap-1.5">
+                      {canEdit && (
+                        <button
+                          onClick={() => handleOpenEdit(banner)}
+                          className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold text-[#2D2522] bg-white border border-[#E5DBCA] hover:bg-[#FAF7F2] active:scale-95 transition cursor-pointer"
+                        >
+                          <Edit className="w-3.5 h-3.5 text-[#7A6F68]" />
+                          <span>{lang === 'mr' ? 'संपादन' : 'Edit'}</span>
+                        </button>
+                      )}
+                      {canDelete && (
+                        <button
+                          onClick={() => setBannerToDelete(banner)}
+                          className="p-1.5 rounded-xl text-[#BE123C] bg-red-50 border border-red-200 hover:bg-red-100 active:scale-95 transition cursor-pointer"
+                          title={t('deleteBannerTitle')}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
 
-                {/* Actions row on mobile, inline on desktop */}
-                <div className="flex items-center justify-between sm:justify-end gap-2 pt-2.5 sm:pt-0 border-t sm:border-t-0 border-[#E5DBCA]/60 shrink-0">
-                  <Button
-                    size="sm"
-                    variant={banner.active ? 'outline' : 'secondary'}
-                    onClick={() => handleToggleActive(banner)}
-                    className="text-xs h-8 px-3 cursor-pointer"
-                  >
-                    {banner.active ? t('deactivateAction') : t('activateAction')}
-                  </Button>
-                  <div className="flex items-center gap-1">
+                {/* DESKTOP VIEW ROW (>= 640px) */}
+                <div className="hidden sm:flex sm:items-center justify-between gap-4 p-4 rounded-2xl bg-[#FAF7F2] border border-[#E5DBCA] hover:border-[#F472B6] transition-all shadow-xs">
+                  <div className="flex items-center gap-4 min-w-0 flex-1">
+                    {/* Order handle */}
+                    <div className="flex flex-col items-center gap-1 text-[#7A6F68]">
+                      <button
+                        onClick={() => handleMove(index, 'up')}
+                        disabled={index === 0}
+                        className="hover:text-[#2D2522] disabled:opacity-20 p-1"
+                      >
+                        <MoveUp className="w-3.5 h-3.5" />
+                      </button>
+                      <span className="font-mono text-xs font-bold text-[#2D2522]">{banner.order}</span>
+                      <button
+                        onClick={() => handleMove(index, 'down')}
+                        disabled={index === banners.length - 1}
+                        className="hover:text-[#2D2522] disabled:opacity-20 p-1"
+                      >
+                        <MoveDown className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <div className="w-28 h-16 rounded-xl overflow-hidden bg-[#F5EFE6] border border-[#E5DBCA] shrink-0 shadow-sm">
+                      <img src={banner.imageUrl} alt={loc.title} className="w-full h-full object-cover" />
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-bold text-[#2D2522] text-sm truncate">{loc.title}</h4>
+                        {loc.badge && <Badge variant="sakura" size="sm" className="shrink-0">{loc.badge}</Badge>}
+                        <Badge variant={banner.active ? 'matcha' : 'secondary'} size="sm" className="shrink-0">
+                          {banner.active ? t('bannerActive') : t('bannerDisabled')}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-[#7A6F68] mt-0.5 line-clamp-1">{loc.subtitle}</p>
+                      <p className="text-[11px] text-[#A89C94] mt-1 truncate">
+                        {t('linkedToContent')} <span className="text-[#BE123C] font-semibold">{linked?.title || banner.contentId}</span>
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Button
+                      size="sm"
+                      variant={banner.active ? 'outline' : 'secondary'}
+                      onClick={() => handleToggleActive(banner)}
+                      className="text-xs h-8"
+                    >
+                      {banner.active ? t('deactivateAction') : t('activateAction')}
+                    </Button>
                     {canEdit && (
                       <button
                         onClick={() => handleOpenEdit(banner)}
-                        className="p-2 rounded-xl text-[#7A6F68] hover:text-[#2D2522] hover:bg-white border border-transparent hover:border-[#E5DBCA] transition cursor-pointer"
-                        title={t('editHeroBanner')}
+                        className="p-2 rounded-full text-[#7A6F68] hover:text-[#2D2522] hover:bg-white"
                       >
                         <Edit className="w-4 h-4" />
                       </button>
@@ -317,15 +383,14 @@ export default function BannersPage() {
                     {canDelete && (
                       <button
                         onClick={() => setBannerToDelete(banner)}
-                        className="p-2 rounded-xl text-[#7A6F68] hover:text-[#BE123C] hover:bg-[#FEE2E2] border border-transparent hover:border-[#FECACA] transition cursor-pointer"
-                        title={t('deleteBannerTitle')}
+                        className="p-2 rounded-full text-[#7A6F68] hover:text-[#BE123C] hover:bg-[#FEE2E2]"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
                     )}
                   </div>
                 </div>
-              </div>
+              </React.Fragment>
             );
           })}
         </div>
