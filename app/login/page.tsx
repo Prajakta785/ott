@@ -140,12 +140,12 @@ export default function LoginPage() {
 
       {/* Main Login Card Center */}
       <main className="relative z-10 flex-1 flex items-center justify-center p-4 sm:p-6 my-auto">
-        <div className="w-full max-w-[420px] bg-white border border-[#E5DBCA] rounded-3xl shadow-[0_25px_60px_-15px_rgba(217,119,6,0.18),0_15px_30px_-10px_rgba(45,37,34,0.08)] px-6 sm:px-8 py-9 sm:py-11 space-y-6 sm:space-y-7 relative overflow-hidden transition-all duration-300">
+        <div className="w-full max-w-[420px] bg-white border border-[#E5DBCA] rounded-3xl shadow-[0_25px_60px_-15px_rgba(217,119,6,0.18),0_15px_30px_-10px_rgba(45,37,34,0.08)] px-6 sm:px-8 pt-4 sm:pt-5 pb-9 sm:pb-11 space-y-5 sm:space-y-6 relative overflow-hidden transition-all duration-300">
           {/* Animated Accent Gradient Top Line */}
           <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-[#D97706] via-[#EA580C] to-[#166534] bg-[length:200%_100%] animate-gradient-flow" />
 
           {/* Brand Logo & Header */}
-          <div className="text-center space-y-3 pt-1">
+          <div className="text-center space-y-2.5">
             <div className="w-16 h-16 sm:w-18 sm:h-18 rounded-2xl bg-[#FAF7F2] border border-[#E5DBCA] p-2 mx-auto flex items-center justify-center shadow-xs transition-transform duration-300 hover:scale-105">
               <img src="/logo.png" alt="ग्रामीण भारत TV" className="w-full h-full object-contain" />
             </div>
