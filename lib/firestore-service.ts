@@ -1025,16 +1025,16 @@ export class FirestoreService {
       const isLoggedIn = isCurrentlyActive;
 
       let devices: any[] = [];
-      if (isCurrentlyActive && Array.isArray(u?.devices) && u.devices.length > 0) {
-        devices = u.devices;
-      } else if (isCurrentlyActive) {
+      if (Array.isArray(u?.devices) && u.devices.length > 0) {
+        devices = u.devices.map((d: any) => ({ ...d, isLoggedIn: isCurrentlyActive }));
+      } else {
         devices = [
           {
             deviceId: `android_${tenDigit || u?.id}`,
             platform: 'android',
             deviceName: 'Android Mobile App',
             lastLogin: lastLoginTime || new Date().toISOString(),
-            isLoggedIn: true,
+            isLoggedIn: isCurrentlyActive,
           }
         ];
       }

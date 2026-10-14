@@ -233,9 +233,23 @@ export default function AdvertisementsPage() {
           <p className="text-slate-800 font-bold text-sm">{t('noDataText')}</p>
         </div>
       ) : (
-        <div className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200 shadow-luxury overflow-hidden">
-          <div className="overflow-x-auto w-full">
-            <table className="w-full text-left border-collapse text-sm min-w-[880px]">
+        <div className="space-y-2">
+          {/* Mobile Horizontal Scroll Hint */}
+          <div className="sm:hidden flex items-center justify-between px-3 py-1.5 bg-amber-50/90 border border-amber-200/70 rounded-xl text-[11px] text-amber-900 font-semibold shadow-xs">
+            <span className="flex items-center gap-1.5">
+              <span>👉</span>
+              <span>{lang === 'mr' ? 'सर्व माहितीसाठी उजवीकडे स्क्रोल करा' : 'Swipe horizontally to view all columns'}</span>
+            </span>
+            <span className="text-amber-700 font-black text-[10px] uppercase tracking-wider bg-amber-100/80 px-2 py-0.5 rounded-md">
+              ⇄ Scroll
+            </span>
+          </div>
+
+          <div 
+            className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200 shadow-luxury overflow-x-auto w-full touch-pan-x"
+            style={{ WebkitOverflowScrolling: 'touch' }}
+          >
+            <table className="w-full text-left border-collapse text-sm min-w-[850px] select-text">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50 text-slate-500 text-xs font-bold uppercase whitespace-nowrap">
                   <th className="py-4 px-5 min-w-[220px]">{t('colCampaign')}</th>

@@ -57,11 +57,11 @@ export default function DashboardLayout({
         isOpen={isMobileSidebarOpen} 
         onClose={() => setIsMobileSidebarOpen(false)} 
       />
-      <div className="flex-1 flex flex-col min-w-0 overflow-x-hidden">
+      <div className="flex-1 flex flex-col min-w-0">
         <Header 
           onToggleSidebar={() => setIsMobileSidebarOpen(prev => !prev)} 
         />
-        <main className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-6 lg:p-8 pb-24 sm:pb-8 max-w-7xl w-full mx-auto">
+        <main className="flex-1 overflow-y-auto p-3 sm:p-6 lg:p-8 pb-24 sm:pb-8 max-w-7xl w-full mx-auto touch-auto">
           {isAllowed ? (
             children
           ) : (

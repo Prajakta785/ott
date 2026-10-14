@@ -47,18 +47,18 @@ function normalizeFirestoreUser(doc: any): User | null {
   const sessionStatus: 'active' | 'logged_out' = isCurrentlyActive ? 'active' : 'logged_out';
   const isLoggedIn = isCurrentlyActive;
 
-  // Active devices: only keep if user is currently active
+  // Devices: preserve known device even when logged out (with isLoggedIn status)
   let devices: any[] = [];
-  if (isCurrentlyActive && Array.isArray(doc.devices) && doc.devices.length > 0) {
-    devices = doc.devices;
-  } else if (isCurrentlyActive) {
+  if (Array.isArray(doc.devices) && doc.devices.length > 0) {
+    devices = doc.devices.map((d: any) => ({ ...d, isLoggedIn: isCurrentlyActive }));
+  } else {
     devices = [
       {
         deviceId: `android_${tenDigit || doc.id}`,
         platform: 'android',
         deviceName: 'Android Mobile App',
         lastLogin: lastLoginTime || new Date().toISOString(),
-        isLoggedIn: true,
+        isLoggedIn: isCurrentlyActive,
       }
     ];
   }

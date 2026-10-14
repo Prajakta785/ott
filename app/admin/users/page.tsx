@@ -17,6 +17,7 @@ import {
   ShieldCheck,
   UserCheck,
   LogOut,
+  LogIn,
   Radio,
   Flame,
   CheckCircle2,
@@ -106,21 +107,23 @@ export default function UsersPage() {
       const isPlanValid = u.planExpiry ? new Date(u.planExpiry).getTime() > Date.now() : true;
       const subStatus = (u.subscriptionStatus === 'active' || (isPlanValid && (u.planId === 'vip-annual' || isUserActive))) ? 'active' : (u.subscriptionStatus || 'free');
 
+      const knownDevices = (Array.isArray(u.devices) && u.devices.length > 0) ? u.devices : [
+        {
+          deviceId: `android_${uDigits || u.id}`,
+          platform: 'android' as const,
+          deviceName: 'Android Mobile App',
+          lastLogin: u.lastLogin || u.createdAt || new Date().toISOString(),
+          isLoggedIn: isUserActive,
+        }
+      ];
+
       if (isUserActive) {
         return {
           ...u,
           subscriptionStatus: subStatus,
           isLoggedIn: true,
           sessionStatus: 'active' as const,
-          devices: (Array.isArray(u.devices) && u.devices.length > 0) ? u.devices : [
-            {
-              deviceId: `android_${uDigits || u.id}`,
-              platform: 'android',
-              deviceName: 'Android Mobile App',
-              lastLogin: u.lastLogin || new Date().toISOString(),
-              isLoggedIn: true,
-            }
-          ],
+          devices: knownDevices.map(d => ({ ...d, isLoggedIn: true })),
           lastLogout: undefined,
         };
       } else {
@@ -128,7 +131,7 @@ export default function UsersPage() {
           ...u,
           isLoggedIn: false,
           sessionStatus: 'logged_out' as const,
-          devices: [],
+          devices: knownDevices.map(d => ({ ...d, isLoggedIn: false })),
           lastLogout: u.lastLogout || u.lastLogin || u.createdAt || new Date().toISOString(),
         };
       }
@@ -642,41 +645,54 @@ export default function UsersPage() {
                       </div>
                     </div>
 
-                    {/* Middle Info Grid: Active Duration, Registered Date, Devices, Subscription */}
+                    {/* Middle Info Grid: Login Time, Logout/Active Time, Device, Plan */}
                     <div className="grid grid-cols-2 gap-2 p-2.5 rounded-xl bg-white border border-[#E5DBCA] text-xs">
                       <div>
                         <span className="text-[10px] font-bold text-[#7A6F68] block uppercase tracking-wider">
-                          {lang === 'mr' ? 'सक्रिय वेळ' : 'Active Duration'}
+                          {lang === 'mr' ? 'लॉगिन वेळ' : 'Login Time'}
                         </span>
-                        <p className="font-bold text-[#2D2522] text-[11px] truncate mt-0.5">
-                          {isUserActive ? activeInfo.text : (u.lastLogout ? `${lang === 'mr' ? 'लॉग आउट' : 'Out'}: ${formatDate(u.lastLogout)}` : 'Offline')}
+                        <p className="font-bold text-emerald-700 text-[11px] truncate mt-0.5 flex items-center gap-1">
+                          <LogIn className="w-3 h-3 text-emerald-600 shrink-0" />
+                          <span>{formatDateTime(u.lastLogin || u.loginTime || u.createdAt)}</span>
                         </p>
                       </div>
 
                       <div>
                         <span className="text-[10px] font-bold text-[#7A6F68] block uppercase tracking-wider">
-                          {lang === 'mr' ? 'उपकरणे' : 'Devices'}
+                          {isUserActive ? (lang === 'mr' ? 'सक्रिय वेळ' : 'Active Duration') : (lang === 'mr' ? 'लॉग आउट वेळ' : 'Logout Time')}
                         </span>
-                        <p className="font-bold text-[#2D2522] text-[11px] mt-0.5">
-                          {devList.length} {lang === 'mr' ? 'उपकरणे' : 'devices'}
+                        <p className="font-bold text-[#2D2522] text-[11px] truncate mt-0.5 flex items-center gap-1">
+                          {isUserActive ? (
+                            <>
+                              <Clock className="w-3 h-3 text-[#EA580C] shrink-0" />
+                              <span>{activeInfo.text}</span>
+                            </>
+                          ) : (
+                            <>
+                              <LogOut className="w-3 h-3 text-slate-400 shrink-0" />
+                              <span>{u.lastLogout ? formatDateTime(u.lastLogout) : (lang === 'mr' ? 'सत्र समाप्त' : 'Ended')}</span>
+                            </>
+                          )}
                         </p>
                       </div>
 
                       <div>
                         <span className="text-[10px] font-bold text-[#7A6F68] block uppercase tracking-wider">
-                          {lang === 'mr' ? 'नोंदणी तारीख' : 'Registered'}
+                          {lang === 'mr' ? 'डिव्हाइस (Device)' : 'Device'}
                         </span>
-                        <p className="font-bold text-[#7A6F68] text-[11px] mt-0.5 font-mono">
-                          {formatDate(u.createdAt)}
+                        <p className="font-bold text-slate-700 text-[11px] mt-0.5 truncate flex items-center gap-1">
+                          {getPlatformIcon(u.devices?.[0]?.platform || 'android')}
+                          <span>{u.devices?.[0]?.deviceName || 'Android App'}</span>
                         </p>
                       </div>
 
                       <div>
                         <span className="text-[10px] font-bold text-[#7A6F68] block uppercase tracking-wider">
-                          {lang === 'mr' ? 'प्लॅन' : 'Plan'}
+                          {lang === 'mr' ? 'नोंदणी / प्लॅन' : 'Registered / Plan'}
                         </span>
-                        <div className="mt-0.5">
-                          <Badge variant={u.subscriptionStatus === 'active' ? 'matcha' : 'secondary'} size="sm" className="text-[10px] px-2 py-0">
+                        <div className="mt-0.5 flex items-center gap-1.5">
+                          <span className="text-[11px] font-mono text-[#7A6F68]">{formatDate(u.createdAt)}</span>
+                          <Badge variant={u.subscriptionStatus === 'active' ? 'matcha' : 'secondary'} size="sm" className="text-[9px] px-1.5 py-0">
                             {u.subscriptionStatus || 'free'}
                           </Badge>
                         </div>
@@ -749,7 +765,7 @@ export default function UsersPage() {
                 <tbody className="divide-y divide-[#E5DBCA]/60">
                   {filteredUsers.map((u) => {
                     const devList = Array.isArray(u?.devices) ? u.devices : [];
-                    const isUserActive = u.sessionStatus === 'active' && u.isLoggedIn === true && devList.length > 0;
+                    const isUserActive = u.sessionStatus === 'active' && u.isLoggedIn === true && devList.some(d => d.isLoggedIn !== false);
                     const activeInfo = formatActiveHours(u.lastLogin || u.loginTime || u.createdAt, lang);
 
                     return (
@@ -785,7 +801,7 @@ export default function UsersPage() {
                           </div>
                         </td>
 
-                        {/* 2. ACTIVITY STATUS & EXACT ACTIVE HOURS */}
+                        {/* 2. ACTIVITY STATUS, LOGIN TIME & EXACT DURATION */}
                         <td className="py-3.5 pr-3">
                           {isUserActive ? (
                             <div className="space-y-1">
@@ -793,10 +809,16 @@ export default function UsersPage() {
                                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
                                 {lang === 'mr' ? 'सक्रिय (Active)' : lang === 'hi' ? 'सक्रिय (Active)' : 'Active (Online)'}
                               </span>
-                              <p className="text-[11px] font-semibold text-slate-700 flex items-center gap-1">
-                                <Clock className="w-3 h-3 text-[#EA580C]" />
-                                <span>{activeInfo.text}</span>
-                              </p>
+                              <div className="text-[10px] space-y-0.5">
+                                <p className="text-emerald-700 font-bold flex items-center gap-1.5">
+                                  <LogIn className="w-3 h-3 text-emerald-600 shrink-0" />
+                                  <span>{lang === 'mr' ? 'लॉगिन' : 'Login'}: {formatDateTime(u.lastLogin || u.loginTime || u.createdAt)}</span>
+                                </p>
+                                <p className="font-semibold text-slate-700 flex items-center gap-1.5">
+                                  <Clock className="w-3 h-3 text-[#EA580C] shrink-0" />
+                                  <span>{activeInfo.text}</span>
+                                </p>
+                              </div>
                             </div>
                           ) : (
                             <div className="space-y-1">
@@ -804,10 +826,16 @@ export default function UsersPage() {
                                 <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
                                 {lang === 'mr' ? 'लॉग आउट (Logged Out)' : lang === 'hi' ? 'लॉग आउट (Logged Out)' : 'Logged Out'}
                               </span>
-                              <p className="text-[10px] text-slate-500 font-medium flex items-center gap-1">
-                                <LogOut className="w-3 h-3 text-slate-400" />
-                                <span>{u.lastLogout ? `${lang === 'mr' ? 'लॉग आउट' : 'Logged out'}: ${formatDateTime(u.lastLogout)}` : (lang === 'mr' ? 'सत्र समाप्त (Offline)' : 'Session Ended')}</span>
-                              </p>
+                              <div className="text-[10px] space-y-0.5">
+                                <p className="text-emerald-700 font-bold flex items-center gap-1.5">
+                                  <LogIn className="w-3 h-3 text-emerald-600 shrink-0" />
+                                  <span>{lang === 'mr' ? 'लॉगिन' : 'Login'}: {formatDateTime(u.lastLogin || u.loginTime || u.createdAt)}</span>
+                                </p>
+                                <p className="text-slate-500 font-medium flex items-center gap-1.5">
+                                  <LogOut className="w-3 h-3 text-slate-400 shrink-0" />
+                                  <span>{u.lastLogout ? `${lang === 'mr' ? 'लॉग आउट' : 'Logged out'}: ${formatDateTime(u.lastLogout)}` : (lang === 'mr' ? 'सत्र समाप्त (Offline)' : 'Session Ended')}</span>
+                                </p>
+                              </div>
                             </div>
                           )}
                         </td>
@@ -821,7 +849,7 @@ export default function UsersPage() {
                         <td className="py-3.5">
                           {isUserActive ? (
                             <div className="flex items-center gap-1.5">
-                              {devList.map((d, idx) => (
+                              {devList.filter(d => d.isLoggedIn !== false).map((d, idx) => (
                                 <span
                                   key={d.deviceId || idx}
                                   title={`${d.deviceName} (${d.platform})`}
@@ -831,13 +859,23 @@ export default function UsersPage() {
                                 </span>
                               ))}
                               <span className="text-xs font-bold text-[#2D2522] ml-1">
-                                {devList.length} {devList.length === 1 ? 'device' : 'devices'}
+                                {devList.filter(d => d.isLoggedIn !== false).length} {devList.filter(d => d.isLoggedIn !== false).length === 1 ? 'device' : 'devices'}
                               </span>
                             </div>
                           ) : (
-                            <span className="text-xs font-bold text-slate-400">
-                              0 devices ({lang === 'mr' ? 'लॉग आउट' : 'Logged Out'})
-                            </span>
+                            <div className="flex items-center gap-1.5">
+                              <span className="p-1 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-400">
+                                {getPlatformIcon(u.devices?.[0]?.platform || 'android')}
+                              </span>
+                              <div className="text-[11px] leading-tight">
+                                <p className="font-bold text-slate-700">
+                                  {u.devices?.[0]?.deviceName || 'Android Mobile App'}
+                                </p>
+                                <p className="text-[10px] text-slate-400 font-medium">
+                                  {lang === 'mr' ? '0 सक्रिय (लॉग आउट)' : '0 active (Logged Out)'}
+                                </p>
+                              </div>
+                            </div>
                           )}
                         </td>
 
@@ -976,11 +1014,18 @@ export default function UsersPage() {
                 <span className="flex items-center gap-2">
                   <Smartphone className="w-4 h-4 text-[#EA580C]" /> Active Android Device Sessions ({(selectedUser.devices || []).length})
                 </span>
-                {selectedUser.lastLogin && (
-                  <span className="text-[10px] text-slate-400 font-mono normal-case">
-                    Last login: {new Date(selectedUser.lastLogin).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                <div className="flex items-center gap-3">
+                  <span className="text-[11px] text-emerald-700 font-bold flex items-center gap-1">
+                    <LogIn className="w-3 h-3 text-emerald-600" />
+                    <span>{lang === 'mr' ? 'लॉगिन' : 'Login'}: {formatDateTime(selectedUser.lastLogin || selectedUser.loginTime || selectedUser.createdAt)}</span>
                   </span>
-                )}
+                  {selectedUser.lastLogout && (
+                    <span className="text-[11px] text-slate-500 font-medium flex items-center gap-1">
+                      <LogOut className="w-3 h-3 text-slate-400" />
+                      <span>{lang === 'mr' ? 'लॉग आउट' : 'Logout'}: {formatDateTime(selectedUser.lastLogout)}</span>
+                    </span>
+                  )}
+                </div>
               </h4>
 
               <div className="space-y-2">
@@ -1007,7 +1052,7 @@ export default function UsersPage() {
                             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                           </p>
                           <p className="text-[10px] text-[#7A6F68] font-mono">
-                            Login timestamp: {formatDate(device.lastLogin)} {device.ipAddress ? `· ${device.ipAddress}` : ''}
+                            Login: {formatDateTime(device.lastLogin)} {device.ipAddress ? `· ${device.ipAddress}` : ''}
                           </p>
                         </div>
                       </div>
