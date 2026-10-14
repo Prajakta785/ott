@@ -963,9 +963,9 @@ export const translations = {
     en: 'Manage high-impact hero carousel banners displayed on Flutter and Web home feeds.',
   },
   addHeroBanner: {
-    mr: '+ नवीन बॅनर जोडा',
-    hi: '+ नया बैनर जोड़ें',
-    en: '+ Add Hero Banner',
+    mr: 'नवीन बॅनर जोडा',
+    hi: 'नया बैनर जोड़ें',
+    en: 'Add Hero Banner',
   },
   liveHeroPreviewTitle: {
     mr: 'थेट मुख्य बॅनर पूर्वावलोकन',
