@@ -270,6 +270,27 @@
       ],
       "isPopular": true,
       "active": true
+    },
+    {
+      "id": "plan_standard",
+      "name": "Standard HD Plan",
+      "slug": "standard-hd-plan",
+      "price": 299,
+      "currency": "₹",
+      "durationDays": 30,
+      "billingCycle": "monthly",
+      "resolution": "1080p Full HD quality",
+      "quality": "1080p Full HD quality",
+      "maxDevices": 2,
+      "features": [
+        "Stream on 2 Devices simultaneously",
+        "1080p Full HD quality",
+        "Ad-free streaming",
+        "Offline downloads"
+      ],
+      "isPopular": true,
+      "active": true,
+      "updatedAt": "2026-11-22T06:26:27.779Z"
     }
   ],
   "ads": [
