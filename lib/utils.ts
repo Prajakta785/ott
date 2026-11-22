@@ -7,17 +7,14 @@ export function cn(...inputs: ClassValue[]) {
 
 export function formatDuration(seconds: number): string {
   if (!seconds || isNaN(seconds)) return "0m";
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const secs = seconds % 60;
+  const totalMinutes = Math.round(seconds / 60);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
 
   if (hours > 0) {
-    return `${hours}h ${minutes}m`;
+    return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
   }
-  if (minutes > 0) {
-    return `${minutes}m ${secs > 0 ? `${secs}s` : ''}`;
-  }
-  return `${secs}s`;
+  return `${totalMinutes}m`;
 }
 
 export function formatViews(num: number): string {

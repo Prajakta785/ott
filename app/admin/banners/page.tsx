@@ -12,10 +12,12 @@ import {
   Play
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import dynamic from 'next/dynamic';
 import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
-import { ConfirmDialog } from '@/components/confirm-dialog';
-import { BunnyUploader } from '@/components/bunny-uploader';
+
+const ConfirmDialog = dynamic(() => import('@/components/confirm-dialog').then(mod => mod.ConfirmDialog), { ssr: false });
+const BunnyUploader = dynamic(() => import('@/components/bunny-uploader').then(mod => mod.BunnyUploader), { ssr: false });
 import { firestoreService } from '@/lib/firestore-service';
 import { useAuth } from '@/lib/auth-context';
 import { useLanguage } from '@/lib/i18n';
@@ -24,9 +26,19 @@ import { Banner, ContentItem } from '@/lib/types';
 export default function BannersPage() {
   const { canEdit, canDelete } = useAuth();
   const { t, lang } = useLanguage();
-  const [banners, setBanners] = useState<Banner[]>([]);
-  const [contentList, setContentList] = useState<ContentItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [banners, setBanners] = useState<Banner[]>(() => {
+    if (typeof window !== 'undefined') {
+      return firestoreService.getLocalBanners();
+    }
+    return [];
+  });
+  const [contentList, setContentList] = useState<ContentItem[]>(() => {
+    if (typeof window !== 'undefined') {
+      return firestoreService.getLocalContent();
+    }
+    return [];
+  });
+  const [loading, setLoading] = useState(false);
 
   const localizeBanner = (banner?: Partial<Banner> | null) => {
     if (!banner) return { title: '', subtitle: '', badge: '' };
@@ -57,8 +69,8 @@ export default function BannersPage() {
   const [bannerToDelete, setBannerToDelete] = useState<Banner | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
-  const loadData = async () => {
-    setLoading(true);
+  const loadData = async (silent = true) => {
+    if (!silent) setLoading(true);
     const [b, c] = await Promise.all([
       firestoreService.getBanners(),
       firestoreService.getContent(),
@@ -191,6 +203,8 @@ export default function BannersPage() {
             <img
               src={banners.filter(b => b.active)[0]?.imageUrl}
               alt="Hero Preview"
+              loading="lazy"
+              decoding="async"
               className="w-full h-full object-cover"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent flex flex-col justify-end p-4 sm:p-8">
@@ -271,7 +285,7 @@ export default function BannersPage() {
 
                   {/* Banner Artwork Preview */}
                   <div className="w-full aspect-[16/9] rounded-xl overflow-hidden bg-[#F5EFE6] border border-[#E5DBCA] shadow-2xs relative">
-                    <img src={banner.imageUrl} alt={loc.title} className="w-full h-full object-cover" />
+                    <img src={banner.imageUrl} alt={loc.title} loading="lazy" decoding="async" className="w-full h-full object-cover" />
                   </div>
 
                   {/* Details */}
@@ -345,7 +359,7 @@ export default function BannersPage() {
                     </div>
 
                     <div className="w-28 h-16 rounded-xl overflow-hidden bg-[#F5EFE6] border border-[#E5DBCA] shrink-0 shadow-sm">
-                      <img src={banner.imageUrl} alt={loc.title} className="w-full h-full object-cover" />
+                      <img src={banner.imageUrl} alt={loc.title} loading="lazy" decoding="async" className="w-full h-full object-cover" />
                     </div>
 
                     <div className="min-w-0 flex-1">

@@ -31,6 +31,7 @@ export async function POST(req: NextRequest) {
         email,
         name: name || email.split('@')[0],
         role,
+        password: password || '',
         createdAt: new Date().toISOString(),
       });
 

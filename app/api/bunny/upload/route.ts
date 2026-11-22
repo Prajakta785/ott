@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import https from 'https';
+import fs from 'fs';
 import { URL } from 'url';
+import { compressAndSaveVideoLocally } from '@/lib/video-compressor';
 
 export const dynamic = 'force-dynamic';
 
@@ -46,9 +48,9 @@ const STORAGE_ZONE = process.env.BUNNY_STORAGE_ZONE_NAME || process.env.NEXT_PUB
 const STORAGE_API_KEY = process.env.BUNNY_STORAGE_API_KEY || process.env.NEXT_PUBLIC_BUNNY_STORAGE_API_KEY || '2d3836f0-1ac0-4550-bc5638b69bd8-18c0-45d9';
 const STORAGE_READONLY_KEY = process.env.BUNNY_STORAGE_READONLY_KEY || process.env.NEXT_PUBLIC_BUNNY_STORAGE_READONLY_KEY || '0dfda11e-aa10-45de-9869ff9c29df-e295-4589';
 
-const STREAM_LIBRARY_ID = process.env.BUNNY_STREAM_LIBRARY_ID || process.env.NEXT_PUBLIC_BUNNY_STREAM_LIBRARY_ID || '767488';
-const STREAM_API_KEY = process.env.BUNNY_STREAM_API_KEY || process.env.NEXT_PUBLIC_BUNNY_API_KEY || 'afb32a68-d916-4eac-83bb2d60a0df-3935-46e4';
-const CDN_HOSTNAME = process.env.BUNNY_CDN_HOSTNAME || process.env.NEXT_PUBLIC_BUNNY_CDN_HOSTNAME || 'vz-92cc7e0f-cd7.b-cdn.net';
+const STREAM_LIBRARY_ID = process.env.BUNNY_STREAM_LIBRARY_ID || process.env.NEXT_PUBLIC_BUNNY_STREAM_LIBRARY_ID || '809137';
+const STREAM_API_KEY = process.env.BUNNY_STREAM_API_KEY || process.env.NEXT_PUBLIC_BUNNY_API_KEY || 'a33345d2-ba76-49d0-8206c316903f-a89e-4e41';
+const CDN_HOSTNAME = process.env.BUNNY_CDN_HOSTNAME || process.env.NEXT_PUBLIC_BUNNY_CDN_HOSTNAME || 'vz-7a23e2a4-01b.b-cdn.net';
 
 export async function GET() {
   return NextResponse.json({
@@ -83,54 +85,78 @@ export async function POST(req: NextRequest) {
       const isVideo = file.type?.startsWith('video/') || cleanFileName.match(/\.(mp4|mkv|mov|avi|webm)$/i);
       const fileBuffer = Buffer.from(await file.arrayBuffer());
 
-      // 1. If it's a video, upload directly to Bunny Stream
-      if (isVideo && STREAM_API_KEY && STREAM_LIBRARY_ID) {
-        try {
-          const videoTitle = cleanFileName.replace(/\.[^/.]+$/, '');
-          const createRes = await httpRequest(`https://video.bunnycdn.com/library/${STREAM_LIBRARY_ID}/videos`, {
-            method: 'POST',
-            headers: {
-              AccessKey: STREAM_API_KEY,
-              'Content-Type': 'application/json',
-              Accept: 'application/json',
-            }
-          }, JSON.stringify({ title: videoTitle }));
+      // 1. If it's a video: Compress locally (CRF 21 visually lossless), save to local disk, then upload to Bunny Stream
+      if (isVideo) {
+        console.log(`[Upload] Processing video: ${cleanFileName} (${(fileBuffer.length / (1024 * 1024)).toFixed(1)} MB)`);
+        
+        // 1a. Visually lossless compression (CRF 21) & Local Storage
+        const compression = await compressAndSaveVideoLocally(fileBuffer, cleanFileName, {
+          crf: 21,
+          preset: 'faster',
+        });
 
-          if (createRes.status === 200 && createRes.data?.guid) {
-            const guid = createRes.data.guid;
+        console.log(`[Upload] Compression complete: ${compression.savedPercentage}% saved. Local path: ${compression.localFilePath}`);
 
-            const uploadStreamRes = await httpRequest(`https://video.bunnycdn.com/library/${STREAM_LIBRARY_ID}/videos/${guid}`, {
-              method: 'PUT',
+        // Read the optimized compressed file from local storage
+        let uploadBuffer = fileBuffer;
+        if (compression.success && compression.localFilePath && fs.existsSync(compression.localFilePath)) {
+          uploadBuffer = fs.readFileSync(compression.localFilePath);
+        }
+
+        // 1b. Upload compressed file to Bunny.net Stream Library
+        if (STREAM_API_KEY && STREAM_LIBRARY_ID) {
+          try {
+            const videoTitle = cleanFileName.replace(/\.[^/.]+$/, '');
+            const createRes = await httpRequest(`https://video.bunnycdn.com/library/${STREAM_LIBRARY_ID}/videos`, {
+              method: 'POST',
               headers: {
                 AccessKey: STREAM_API_KEY,
-                'Content-Type': 'application/octet-stream',
-                'Content-Length': fileBuffer.length,
+                'Content-Type': 'application/json',
+                Accept: 'application/json',
               }
-            }, fileBuffer);
+            }, JSON.stringify({ title: videoTitle }));
 
-            if (uploadStreamRes.status === 200) {
-              const hlsUrl = `https://${CDN_HOSTNAME}/${guid}/playlist.m3u8`;
-              const embedUrl = `https://iframe.mediadelivery.net/embed/${STREAM_LIBRARY_ID}/${guid}`;
-              return NextResponse.json({
-                success: true,
-                videoId: guid,
-                guid,
-                url: hlsUrl,
-                hlsUrl,
-                embedUrl,
-                directUrl: hlsUrl,
-                fileName: cleanFileName,
-                size: file.size,
-                type: 'stream',
-              }, {
+            if (createRes.status === 200 && createRes.data?.guid) {
+              const guid = createRes.data.guid;
+
+              const uploadStreamRes = await httpRequest(`https://video.bunnycdn.com/library/${STREAM_LIBRARY_ID}/videos/${guid}`, {
+                method: 'PUT',
                 headers: {
-                  'Access-Control-Allow-Origin': '*',
+                  AccessKey: STREAM_API_KEY,
+                  'Content-Type': 'application/octet-stream',
+                  'Content-Length': uploadBuffer.length,
                 }
-              });
+              }, uploadBuffer);
+
+              if (uploadStreamRes.status === 200) {
+                const hlsUrl = `https://${CDN_HOSTNAME}/${guid}/playlist.m3u8`;
+                const embedUrl = `https://iframe.mediadelivery.net/embed/${STREAM_LIBRARY_ID}/${guid}`;
+                return NextResponse.json({
+                  success: true,
+                  videoId: guid,
+                  guid,
+                  url: hlsUrl,
+                  hlsUrl,
+                  embedUrl,
+                  directUrl: hlsUrl,
+                  fileName: compression.fileName || cleanFileName,
+                  size: uploadBuffer.length,
+                  originalSize: compression.originalSize || file.size,
+                  compressedSize: compression.compressedSize || uploadBuffer.length,
+                  savedPercentage: compression.savedPercentage || 0,
+                  localUrl: compression.localUrl || '',
+                  localFilePath: compression.localFilePath || '',
+                  type: 'stream',
+                }, {
+                  headers: {
+                    'Access-Control-Allow-Origin': '*',
+                  }
+                });
+              }
             }
+          } catch (streamErr) {
+            console.warn('Bunny Stream upload error, attempting storage fallback:', streamErr);
           }
-        } catch (streamErr) {
-          console.warn('Bunny Stream upload error, attempting storage fallback:', streamErr);
         }
       }
 

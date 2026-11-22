@@ -5,9 +5,9 @@ export const dynamic = 'force-dynamic';
 
 const httpsAgent = new https.Agent({ rejectUnauthorized: false, keepAlive: true });
 
-const DEFAULT_CDN_HOST = 'vz-92cc7e0f-cd7.b-cdn.net';
-const STREAM_API_KEY = process.env.BUNNY_STREAM_API_KEY || process.env.NEXT_PUBLIC_BUNNY_API_KEY || 'afb32a68-d916-4eac-83bb2d60a0df-3935-46e4';
-const STREAM_LIBRARY_ID = process.env.BUNNY_STREAM_LIBRARY_ID || process.env.NEXT_PUBLIC_BUNNY_STREAM_LIBRARY_ID || '767488';
+const DEFAULT_CDN_HOST = process.env.BUNNY_CDN_HOSTNAME || process.env.NEXT_PUBLIC_BUNNY_CDN_HOSTNAME || 'vz-7a23e2a4-01b.b-cdn.net';
+const STREAM_API_KEY = process.env.BUNNY_STREAM_API_KEY || process.env.NEXT_PUBLIC_BUNNY_API_KEY || 'a33345d2-ba76-49d0-8206c316903f-a89e-4e41';
+const STREAM_LIBRARY_ID = process.env.BUNNY_STREAM_LIBRARY_ID || process.env.NEXT_PUBLIC_BUNNY_STREAM_LIBRARY_ID || '809137';
 
 const FALLBACK_NEWS_IMAGE = 'https://images.unsplash.com/photo-1585829365295-ab7cd400c167?w=800';
 

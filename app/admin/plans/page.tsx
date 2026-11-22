@@ -8,9 +8,11 @@ import {
   Edit, 
   Trash2, 
   Search, 
-  Smartphone, 
   Sparkles,
-  IndianRupee
+  IndianRupee,
+  RotateCw,
+  Crown,
+  ShieldCheck
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -25,9 +27,23 @@ import { useLanguage } from '@/lib/i18n';
 export default function PlansPage() {
   const { canEdit, canDelete } = useAuth();
   const { t, lang } = useLanguage();
-  const [plans, setPlans] = useState<Plan[]>([]);
-  const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [plans, setPlans] = useState<Plan[]>(() => {
+    if (typeof window !== 'undefined') {
+      return firestoreService.getLocalPlans().map(p => ({
+        ...p,
+        currency: 'INR',
+        price: Number(p.price) || 0
+      }));
+    }
+    return [];
+  });
+  const [subscriptions, setSubscriptions] = useState<Subscription[]>(() => {
+    if (typeof window !== 'undefined') {
+      return firestoreService.getLocalSubscriptions();
+    }
+    return [];
+  });
+  const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'plans' | 'subscribers'>('plans');
 
   // Search & Filter
@@ -43,8 +59,8 @@ export default function PlansPage() {
   // Delete Target
   const [planToDelete, setPlanToDelete] = useState<Plan | null>(null);
 
-  const loadData = async () => {
-    setLoading(true);
+  const loadData = async (silent = true) => {
+    if (!silent) setLoading(true);
     let [pList, sList] = await Promise.all([
       firestoreService.getPlans(),
       firestoreService.getSubscriptions(),
@@ -62,6 +78,18 @@ export default function PlansPage() {
       } catch {}
     }
 
+    if (!sList || sList.length === 0) {
+      try {
+        const res = await fetch('/api/subscriptions');
+        if (res.ok) {
+          const json = await res.json();
+          if (json.data && Array.isArray(json.data) && json.data.length > 0) {
+            sList = json.data;
+          }
+        }
+      } catch {}
+    }
+
     // Ensure all plans are in INR and clean
     const inrPlans = (pList && pList.length > 0 ? pList : []).map(p => ({
       ...p,
@@ -70,7 +98,7 @@ export default function PlansPage() {
     }));
 
     setPlans(inrPlans);
-    setSubscriptions(sList);
+    setSubscriptions(sList || []);
     setLoading(false);
   };
 
@@ -116,11 +144,19 @@ export default function PlansPage() {
     try {
       const featArray = featuresInput.split('\n').map(s => s.trim()).filter(Boolean);
 
+      const price = currentPlan.price !== undefined ? Number(currentPlan.price) : 0;
+      let targetId = currentPlan.id || 'plan-' + Date.now().toString(36);
+      const oldPlanId = currentPlan.id;
+
+      if (targetId.startsWith('plan_premium_') || targetId === 'plan_premium_399') {
+        targetId = `plan_premium_${price}`;
+      }
+
       const planToSave: Plan = {
-        id: currentPlan.id || 'plan-' + Date.now().toString(36),
+        id: targetId,
         name: currentPlan.name.trim(),
-        slug: currentPlan.slug || slugify(currentPlan.name.trim()),
-        price: currentPlan.price !== undefined ? Number(currentPlan.price) : 0,
+        slug: slugify(currentPlan.name.trim()) + `-${price}`,
+        price: price,
         currency: 'INR',
         durationDays: Number(currentPlan.durationDays) || 30,
         billingCycle: currentPlan.durationDays && currentPlan.durationDays >= 365 ? 'yearly' : (currentPlan.durationDays && currentPlan.durationDays >= 90 ? 'quarterly' : 'monthly'),
@@ -131,6 +167,12 @@ export default function PlansPage() {
         active: currentPlan.active !== undefined ? currentPlan.active : true,
       };
 
+      if (oldPlanId && oldPlanId !== targetId) {
+        await firestoreService.deletePlan(oldPlanId);
+      }
+      if (targetId !== 'plan_premium_399') {
+        await firestoreService.deletePlan('plan_premium_399').catch(() => {});
+      }
       await firestoreService.savePlan(planToSave);
       setIsPlanModalOpen(false);
       await loadData();
@@ -255,13 +297,6 @@ export default function PlansPage() {
                   </div>
 
                   <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between text-xs">
-                    <span className="text-slate-500 font-bold">{t('maxDevicesText')}</span>
-                    <span className="font-bold text-slate-900 flex items-center gap-1">
-                      <Smartphone className="w-3.5 h-3.5 text-rose-600" /> {plan.maxDevices} {t('concurrentDevices')}
-                    </span>
-                  </div>
-
-                  <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between text-xs">
                     <span className="text-slate-500 font-bold">{t('resolutionText')}</span>
                     <span className="font-bold text-slate-900 uppercase">{plan.resolution}</span>
                   </div>
@@ -298,17 +333,37 @@ export default function PlansPage() {
       ) : (
         /* Subscriptions Table */
         <div className="rounded-3xl bg-white border border-slate-200 p-6 shadow-luxury space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-slate-900">Payment Transactions & Entitlements</h3>
-            <div className="relative max-w-xs">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                placeholder="Search user or transaction..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-full pl-9 pr-3 py-1.5 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-rose-500"
-              />
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <Crown className="w-4 h-4 text-amber-500" />
+                {lang === 'mr' ? 'वर्गणीदार व पेमेंट व्यवहार (Active Entitlements)' : 'Payment Transactions & Entitlements'}
+              </h3>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                {lang === 'mr'
+                  ? 'अँड्रॉइड ॲपवरून खरेदी केलेले किंवा ॲडमिनने सक्रिय केलेले सर्व सबस्क्रिप्शन येथे रिअल-टाईम दिसतात.'
+                  : 'All subscriptions activated via Android app checkout or Admin panel.'}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => loadData()}
+                disabled={loading}
+                className="px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold flex items-center gap-1.5 transition disabled:opacity-50"
+              >
+                <RotateCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+                {lang === 'mr' ? 'रीफ्रेश' : 'Refresh'}
+              </button>
+              <div className="relative max-w-xs">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder={lang === 'mr' ? 'वापरकर्ता, फोन किंवा व्यवहार शोधा...' : 'Search user, phone or transaction...'}
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-full pl-9 pr-3 py-1.5 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-rose-500"
+                />
+              </div>
             </div>
           </div>
 
@@ -326,39 +381,93 @@ export default function PlansPage() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {subscriptions
-                  .filter(s => (s.userName?.toLowerCase() || '').includes(searchTerm.toLowerCase()) || s.transactionId.toLowerCase().includes(searchTerm.toLowerCase()))
-                  .map((sub) => (
-                    <tr key={sub.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="py-3.5">
-                        <p className="font-bold text-slate-900">{sub.userName || sub.userId}</p>
-                        <p className="text-[11px] text-slate-500">{sub.userPhone || 'No phone'}</p>
-                      </td>
-                      <td className="py-3.5">
-                        <span className="font-bold text-slate-900">{sub.planName}</span>
-                      </td>
-                      <td className="py-3.5 font-bold text-slate-900">
-                        {formatCurrency(sub.amount, 'INR')}
-                      </td>
-                      <td className="py-3.5">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-slate-100 border border-slate-200 text-slate-700">
-                            {sub.paymentProvider}
+                  .filter(s => {
+                    if (!searchTerm.trim()) return true;
+                    const term = searchTerm.toLowerCase();
+                    return (
+                      (s.userName || '').toLowerCase().includes(term) ||
+                      (s.userPhone || '').toLowerCase().includes(term) ||
+                      (s.planName || '').toLowerCase().includes(term) ||
+                      (s.transactionId || '').toLowerCase().includes(term) ||
+                      (s.userId || '').toLowerCase().includes(term)
+                    );
+                  })
+                  .map((sub) => {
+                    const endMs = sub.endDate ? new Date(sub.endDate).getTime() : NaN;
+                    const daysLeft = !isNaN(endMs) ? Math.ceil((endMs - Date.now()) / (1000 * 60 * 60 * 24)) : null;
+                    const isExpired = sub.status === 'expired' || (daysLeft !== null && daysLeft <= 0);
+
+                    return (
+                      <tr key={sub.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="py-3.5">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-800 flex items-center justify-center font-bold text-xs shrink-0">
+                              {(sub.userName || 'U').charAt(0).toUpperCase()}
+                            </div>
+                            <div>
+                              <p className="font-bold text-slate-900">{sub.userName || 'VIP Subscriber'}</p>
+                              <p className="text-[11px] text-slate-500 font-mono">{sub.userPhone || sub.userId}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-3.5">
+                          <span className="font-bold text-slate-900 inline-flex items-center gap-1">
+                            <Crown className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                            {sub.planName || 'VIP Pass'}
                           </span>
-                          <span className="font-mono text-slate-500 truncate max-w-[120px]">{sub.transactionId}</span>
-                        </div>
-                      </td>
-                      <td className="py-3.5 text-slate-500 font-mono">
-                        {formatDate(sub.startDate)} → {formatDate(sub.endDate)}
-                      </td>
-                      <td className="py-3.5">
-                        <Badge variant={sub.status === 'active' ? 'matcha' : 'secondary'} size="sm">
-                          {sub.status}
-                        </Badge>
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                        <td className="py-3.5 font-bold text-slate-900">
+                          {formatCurrency(sub.amount, 'INR')}
+                        </td>
+                        <td className="py-3.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${
+                              sub.paymentProvider === 'razorpay'
+                                ? 'bg-blue-50 border-blue-200 text-blue-700'
+                                : 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                            }`}>
+                              {sub.paymentProvider === 'razorpay' ? 'Razorpay' : 'Admin Activation'}
+                            </span>
+                            <span className="font-mono text-slate-500 text-[11px] bg-slate-100 px-1.5 py-0.5 rounded truncate max-w-[140px]" title={sub.transactionId}>
+                              {sub.transactionId || '—'}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="py-3.5 text-slate-600 font-mono text-[11px]">
+                          <div>
+                            <span>{formatDate(sub.startDate)} → {formatDate(sub.endDate)}</span>
+                          </div>
+                          {daysLeft !== null && (
+                            <div className="mt-0.5">
+                              {daysLeft > 0 ? (
+                                <span className="inline-flex items-center text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                                  ⏳ {daysLeft} दिवस शिल्लक ({daysLeft} days left)
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center text-[10px] font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200">
+                                  कालबाह्य (Expired)
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </td>
+                        <td className="py-3.5">
+                          <Badge variant={!isExpired ? 'matcha' : 'secondary'} size="sm">
+                            {!isExpired ? (lang === 'mr' ? 'सक्रिय' : 'Active') : (lang === 'mr' ? 'संपला' : 'Expired')}
+                          </Badge>
+                        </td>
+                      </tr>
+                    );
+                  })}
               </tbody>
             </table>
+            {subscriptions.length === 0 && (
+              <div className="py-12 text-center">
+                <CreditCard className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                <p className="text-xs font-bold text-slate-600">कोणतीही वर्गणी (Subscription) आढळली नाही</p>
+                <p className="text-[11px] text-slate-400 mt-0.5">वापरकर्त्यांनी खरेदी केलेले किंवा VIP दिलेले प्लॅन्स येथे दिसतील.</p>
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -25,13 +25,15 @@ import {
   Radio,
   UserCheck
 } from 'lucide-react';
+import dynamic from 'next/dynamic';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
-import { ConfirmDialog } from '@/components/confirm-dialog';
-import { BunnyUploader } from '@/components/bunny-uploader';
-import { AudioPlayer } from '@/components/audio-player';
-import { ConnectAudioModal } from '@/components/connect-audio-modal';
+
+const ConfirmDialog = dynamic(() => import('@/components/confirm-dialog').then(mod => mod.ConfirmDialog), { ssr: false });
+const BunnyUploader = dynamic(() => import('@/components/bunny-uploader').then(mod => mod.BunnyUploader), { ssr: false });
+const AudioPlayer = dynamic(() => import('@/components/audio-player').then(mod => mod.AudioPlayer), { ssr: false });
+const ConnectAudioModal = dynamic(() => import('@/components/connect-audio-modal').then(mod => mod.ConnectAudioModal), { ssr: false });
 import { firestoreService } from '@/lib/firestore-service';
 import { ContentItem } from '@/lib/types';
 import { formatDuration, formatViews, slugify, formatDate } from '@/lib/utils';
@@ -518,6 +520,8 @@ export default function PodcastsPage() {
                   <img
                     src={podcast.poster || 'https://images.unsplash.com/photo-1590602847861-f357a9332bbc?w=800&auto=format&fit=crop&q=80'}
                     alt={podcast.title}
+                    loading="lazy"
+                    decoding="async"
                     className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-black/30" />
@@ -663,6 +667,8 @@ export default function PodcastsPage() {
                         <img 
                           src={podcast.poster || 'https://images.unsplash.com/photo-1590602847861-f357a9332bbc?w=800&auto=format&fit=crop&q=80'} 
                           alt={podcast.title} 
+                          loading="lazy"
+                          decoding="async"
                           className="w-full h-full object-cover" 
                         />
                         <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
@@ -873,7 +879,7 @@ export default function PodcastsPage() {
                     required
                     value={currentPodcast.audioUrl || ''}
                     onChange={(e) => handleAudioUrlChange(e.target.value)}
-                    placeholder="https://vz-92cc7e0f-cd7.b-cdn.net/podcasts/episode_01.mp3"
+                    placeholder="https://vz-7a23e2a4-01b.b-cdn.net/podcasts/episode_01.mp3"
                     className={`w-full bg-white border rounded-2xl px-4 py-2.5 text-xs font-mono text-[#2D2522] focus:outline-none transition-colors ${
                       audioUrlError 
                         ? 'border-rose-400 focus:border-rose-500' 
@@ -935,7 +941,7 @@ export default function PodcastsPage() {
               )}
 
               <p className="text-[10px] text-[#7A6F68]">
-                Supports Bunny Storage direct CDN URLs (e.g. <code>https://storage.bunnycdn.com/graminbharat/...</code> or <code>https://vz-92cc7e0f-cd7.b-cdn.net/...</code>) and all standard MP3, AAC, M4A or HLS audio streams.
+                Supports Bunny Storage direct CDN URLs (e.g. <code>https://storage.bunnycdn.com/graminbharat/...</code> or <code>https://vz-7a23e2a4-01b.b-cdn.net/...</code>) and all standard MP3, AAC, M4A or HLS audio streams.
               </p>
             </div>
           </div>
@@ -961,7 +967,7 @@ export default function PodcastsPage() {
                   type="url"
                   value={currentPodcast.poster || ''}
                   onChange={(e) => setCurrentPodcast(prev => ({ ...prev, poster: e.target.value, banner: e.target.value }))}
-                  placeholder="https://vz-92cc7e0f-cd7.b-cdn.net/podcasts/cover.jpg"
+                  placeholder="https://vz-7a23e2a4-01b.b-cdn.net/podcasts/cover.jpg"
                   className="w-full bg-[#FAF7F2] border border-[#E5DBCA] rounded-2xl px-4 py-2 text-xs font-mono text-[#2D2522] focus:outline-none focus:border-purple-500 focus:bg-white"
                 />
 

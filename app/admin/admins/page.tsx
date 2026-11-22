@@ -13,6 +13,7 @@ import {
   ExternalLink, 
   ArrowRight,
   Eye,
+  EyeOff,
   Radio,
   Newspaper,
   Film,
@@ -225,8 +226,11 @@ export default function AdminsPage() {
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [newEmail, setNewEmail] = useState('');
   const [newName, setNewName] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [newRole, setNewRole] = useState<AdminRole>('news_editor');
   const [isSaving, setIsSaving] = useState(false);
+  const [showDetailsPassword, setShowDetailsPassword] = useState(false);
 
   // Delete State
   const [adminToDelete, setAdminToDelete] = useState<AdminUser | null>(null);
@@ -259,22 +263,47 @@ export default function AdminsPage() {
   const handleInviteAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newEmail || !newName) return;
+    if (newPassword && newPassword.trim().length < 6) {
+      alert(lang === 'mr' ? 'पासवर्ड किमान ६ अक्षरांचा असावा.' : 'Password must be at least 6 characters long.');
+      return;
+    }
     setIsSaving(true);
+
+    const cleanPass = newPassword.trim() || 'admin123';
 
     const newAdmin: AdminUser = {
       uid: 'admin-' + Date.now().toString(36),
       email: newEmail.toLowerCase().trim(),
       name: newName.trim(),
       role: newRole,
+      password: cleanPass,
       createdAt: new Date().toISOString(),
       lastLogin: 'Never',
     };
 
     await firestoreService.saveAdmin(newAdmin);
+
+    try {
+      await fetch('/api/admins/invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: newAdmin.email,
+          password: cleanPass,
+          name: newAdmin.name,
+          role: newAdmin.role,
+        }),
+      });
+    } catch (err) {
+      console.warn('API invite sync notice:', err);
+    }
+
     setIsSaving(false);
     setIsInviteModalOpen(false);
     setNewEmail('');
     setNewName('');
+    setNewPassword('');
+    setShowPassword(false);
     await loadAdmins();
     setAssignedSuccessAdmin(newAdmin);
   };
@@ -743,6 +772,31 @@ export default function AdminsPage() {
 
               {/* Modal Body */}
               <div className="p-6 overflow-y-auto space-y-5 text-xs">
+                {/* Credentials / Password Info Card */}
+                <div className="p-3.5 rounded-2xl bg-amber-50/70 border border-amber-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 bg-white rounded-xl border border-amber-200 text-amber-700 shadow-2xs">
+                      <Lock className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-amber-900/70 font-bold uppercase">{lang === 'mr' ? 'लॉगिन पासवर्ड (Login Password)' : 'Login Password'}</p>
+                      <p className="font-mono text-xs font-black text-slate-900 mt-0.5">
+                        {selectedAdminForDetails.password 
+                          ? (showDetailsPassword ? selectedAdminForDetails.password : '••••••••••••') 
+                          : (showDetailsPassword ? 'admin123' : '••••••••')}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowDetailsPassword(!showDetailsPassword)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-amber-100/50 border border-amber-200 rounded-xl text-amber-900 font-bold text-[11px] shadow-2xs transition cursor-pointer self-start sm:self-auto"
+                  >
+                    {showDetailsPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    <span>{showDetailsPassword ? (lang === 'mr' ? 'लपवा' : 'Hide') : (lang === 'mr' ? 'पासवर्ड पहा' : 'View Password')}</span>
+                  </button>
+                </div>
+
                 {/* Granular Permissions Strip */}
                 <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
                   <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider mb-2.5">
@@ -846,6 +900,37 @@ export default function AdminsPage() {
               placeholder="e.g. editor@graminbharat.tv"
               className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 focus:outline-none focus:border-rose-500"
             />
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs font-bold text-slate-700 block">
+                {lang === 'mr' ? 'पासवर्ड (संकेतशब्द) *' : 'Password *'}
+              </label>
+              <span className="text-[10px] text-slate-400 font-medium">
+                {lang === 'mr' ? 'किमान ६ अक्षरे' : 'Min. 6 characters'}
+              </span>
+            </div>
+            <div className="relative">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                required
+                minLength={6}
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder={lang === 'mr' ? 'प्रशासकासाठी पासवर्ड टाका (उदा. Admin@2026)' : 'e.g. Admin@2026'}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 pr-10 text-slate-900 focus:outline-none focus:border-rose-500 font-mono text-xs"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-200/50 cursor-pointer transition-colors"
+                tabIndex={-1}
+                title={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
           </div>
 
           <div>

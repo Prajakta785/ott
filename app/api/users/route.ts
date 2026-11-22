@@ -71,22 +71,27 @@ function normalizeFirestoreUser(doc: any): User | null {
     lastLogout = null;
   }
 
-    const isPlanValid = doc.planExpiry ? new Date(doc.planExpiry).getTime() > Date.now() : true;
-    const subStatus: 'active' | 'free' | 'expired' = (doc.subscriptionStatus === 'active' || (isPlanValid && (doc.planId === 'vip-annual' || isCurrentlyActive))) ? 'active' : (doc.subscriptionStatus || 'free');
+  const isPlanExpired = doc.planExpiry ? new Date(doc.planExpiry).getTime() <= Date.now() : false;
+  const isSubActive = (doc.subscriptionStatus === 'active' || doc.isSubscribed === true) && !isPlanExpired;
+  const subStatus: 'active' | 'free' | 'expired' = isSubActive
+    ? 'active'
+    : (doc.subscriptionStatus === 'expired' || isPlanExpired)
+    ? 'expired'
+    : 'free';
 
-    return {
-      id: doc.id || (tenDigit ? `user_${tenDigit}` : `user_${Date.now()}`),
-      phone: formattedPhone,
-      name: name,
-      email: doc.email || '',
-      photoUrl: doc.photoUrl || doc.photoURL || `https://api.dicebear.com/7.x/avataaars/png?seed=${tenDigit || doc.id || 'user'}`,
-      district: doc.district || '',
-      taluka: doc.taluka || '',
-      createdAt: doc.createdAt || doc.created_at || new Date().toISOString(),
-      subscriptionStatus: subStatus,
-      planId: doc.planId || 'vip-annual',
-      planName: doc.planName || (subStatus === 'active' ? 'VIP Annual Pass' : 'Standard Access'),
-      planExpiry: doc.planExpiry || doc.expiryDate || '2027-12-31T23:59:59Z',
+  return {
+    id: doc.id || (tenDigit ? `user_${tenDigit}` : `user_${Date.now()}`),
+    phone: formattedPhone,
+    name: name,
+    email: doc.email || '',
+    photoUrl: doc.photoUrl || doc.photoURL || `https://api.dicebear.com/7.x/avataaars/png?seed=${tenDigit || doc.id || 'user'}`,
+    district: doc.district || '',
+    taluka: doc.taluka || '',
+    createdAt: doc.createdAt || doc.created_at || new Date().toISOString(),
+    subscriptionStatus: subStatus,
+    planId: subStatus === 'active' ? (doc.planId || 'vip-annual') : (doc.planId || 'free'),
+    planName: doc.planName || (subStatus === 'active' ? 'VIP Annual Pass' : (subStatus === 'expired' ? 'प्लॅन संपला (Plan Expired)' : 'विना-सबस्क्रिप्शन (मोफत)')),
+    planExpiry: doc.planExpiry || doc.expiryDate || (subStatus === 'active' ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString() : undefined),
     devices: devices,
     watchlist: Array.isArray(doc.watchlist) ? doc.watchlist : [],
     continueWatching: doc.continueWatching && typeof doc.continueWatching === 'object' ? doc.continueWatching : {},
@@ -125,7 +130,8 @@ export async function GET() {
           ? normalized.name
           : existing.name;
 
-        const isSubActive = normalized.subscriptionStatus === 'active' || existing.subscriptionStatus === 'active';
+        const isSubActive = (normalized.subscriptionStatus === 'active' || existing.subscriptionStatus === 'active');
+        const activeSubRec = normalized.subscriptionStatus === 'active' ? normalized : existing;
         
         // If either record explicitly logged out recently, consider the latest event
         const normTime = new Date(normalized.lastLogin || normalized.createdAt || 0).getTime();
@@ -142,7 +148,10 @@ export async function GET() {
           phone: `+91 ${phoneKey}`,
           name: pickName,
           photoUrl: primary.photoUrl || secondary.photoUrl,
-          subscriptionStatus: isSubActive ? 'active' : primary.subscriptionStatus,
+          subscriptionStatus: isSubActive ? 'active' : 'free',
+          planId: isSubActive ? (activeSubRec.planId || 'vip-annual') : 'free',
+          planName: isSubActive ? (activeSubRec.planName || 'VIP Annual Pass') : 'विना-सबस्क्रिप्शन (मोफत)',
+          planExpiry: isSubActive ? (activeSubRec.planExpiry || undefined) : undefined,
           isLoggedIn: !isLoggedOut,
           sessionStatus: isLoggedOut ? 'logged_out' : 'active',
           devices: isLoggedOut ? [] : ((primary.devices && primary.devices.length > 0) ? primary.devices : secondary.devices),
@@ -211,7 +220,8 @@ export async function GET() {
       headers: { 'Access-Control-Allow-Origin': '*' }
     });
   } catch (err: any) {
-    return NextResponse.json({ success: false, error: err?.message || 'Failed to fetch users' }, { status: 500 });
+    console.error('GET /api/users error:', err);
+    return NextResponse.json({ success: true, users: [], count: 0, error: err?.message || 'Failed to fetch users' });
   }
 }
 
@@ -288,6 +298,33 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    // Handle UPDATE_SUBSCRIPTION action explicitly (from Admin Panel or User Subscribe)
+    if (body.action === 'update_subscription') {
+      const isSub = body.subscriptionStatus === 'active';
+      const days = Number(body.durationDays) || 365;
+      const expiry = isSub ? (body.planExpiry || new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString()) : null;
+      const subPayload: any = {
+        id: userId,
+        phone: cleanPhone ? `+91 ${cleanPhone}` : (body.phone || ''),
+        subscriptionStatus: isSub ? 'active' : 'free',
+        planId: isSub ? (body.planId || (days <= 31 ? 'vip-monthly' : days <= 95 ? 'vip-quarterly' : 'vip-annual')) : 'free',
+        planName: isSub ? (body.planName || (days === 28 ? 'VIP Monthly Pass (२८ दिवस)' : days === 84 ? 'VIP Quarterly Pass (८४ दिवस)' : `VIP Pass (${days} दिवस)`)) : 'विना-सबस्क्रिप्शन (मोफत)',
+        planExpiry: expiry,
+        durationDays: isSub ? days : 0,
+        updatedAt: nowIso,
+      };
+      if (body.name) subPayload.name = body.name;
+
+      const synced = await syncDocToFirestore('users', userId, subPayload);
+      return NextResponse.json({
+        success: synced,
+        message: isSub ? `सबस्क्रिप्शन ${days} दिवसांसाठी सक्रिय केले` : 'सबस्क्रिप्शन रद्द केले',
+        user: subPayload,
+      }, {
+        headers: { 'Access-Control-Allow-Origin': '*' }
+      });
+    }
+
     // Normal Login or Activation
     const userPayload: User = {
       id: userId,
@@ -331,7 +368,7 @@ export async function POST(req: NextRequest) {
     });
   } catch (err: any) {
     console.error('POST /api/users error:', err);
-    return NextResponse.json({ success: false, error: err?.message || 'Failed to save user' }, { status: 500 });
+    return NextResponse.json({ success: false, error: err?.message || 'Failed to save user' });
   }
 }
 
@@ -361,6 +398,7 @@ export async function DELETE(req: NextRequest) {
       headers: { 'Access-Control-Allow-Origin': '*' }
     });
   } catch (err: any) {
-    return NextResponse.json({ success: false, error: err?.message || 'Failed to delete user' }, { status: 500 });
+    console.error('DELETE /api/users error:', err);
+    return NextResponse.json({ success: false, error: err?.message || 'Failed to delete user' });
   }
 }

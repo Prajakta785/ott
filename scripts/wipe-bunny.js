@@ -1,7 +1,7 @@
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 
-const BUNNY_STREAM_API_KEY = 'afb32a68-d916-4eac-83bb2d60a0df-3935-46e4';
-const BUNNY_LIBRARY_ID = '767488';
+const BUNNY_STREAM_API_KEY = 'a33345d2-ba76-49d0-8206c316903f-a89e-4e41';
+const BUNNY_LIBRARY_ID = '809137';
 const BUNNY_STORAGE_API_KEY = '2d3836f0-1ac0-4550-bc5638b69bd8-18c0-45d9';
 const BUNNY_STORAGE_ZONE = 'graminbharat';
 

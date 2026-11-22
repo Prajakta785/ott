@@ -20,7 +20,13 @@ import {
   Plus,
   X,
   Check,
-  Edit3
+  Edit3,
+  Play,
+  Video,
+  Image as ImageIcon,
+  ExternalLink,
+  Eye,
+  Film
 } from 'lucide-react';
 import { useLanguage } from '@/lib/i18n';
 
@@ -76,11 +82,113 @@ const GRIEVANCE_CATEGORIES = [
 
 export default function GrievancesPage() {
   const { t, lang } = useLanguage();
-  const [grievances, setGrievances] = useState<Grievance[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [grievances, setGrievances] = useState<Grievance[]>(() => {
+    if (typeof window !== 'undefined') {
+      return firestoreService.getLocalGrievances();
+    }
+    return [];
+  });
+  const [loading, setLoading] = useState(false);
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [publishingId, setPublishingId] = useState<string | null>(null);
+  const [selectedMediaGrievance, setSelectedMediaGrievance] = useState<Grievance | null>(null);
+  const [playingCardVideoId, setPlayingCardVideoId] = useState<string | null>(null);
+
+  // Helper to resolve video stream from Local App Uploads, Bunny Stream, or Firebase Storage
+  const getPlayableVideoUrl = (mediaUrl?: string): { url: string; isIframe: boolean; provider: string } => {
+    if (!mediaUrl) {
+      return {
+        url: '/uploads/videos/1000899124.mp4',
+        isIframe: false,
+        provider: 'ॲप व्हिडिओ (App Video)'
+      };
+    }
+
+    const clean = mediaUrl.trim();
+
+    // 0. App Local Uploaded Video File (/uploads/videos/...) or media://
+    if (clean.startsWith('/uploads/') || clean.startsWith('uploads/')) {
+      const path = clean.startsWith('/') ? clean : `/${clean}`;
+      return {
+        url: path,
+        isIframe: false,
+        provider: 'ॲप वरून आलेला मूळ व्हिडिओ (Original App Video)'
+      };
+    }
+
+    if (clean.startsWith('media://')) {
+      const fileName = clean.replace('media://', '');
+      return {
+        url: `/uploads/videos/${fileName}`,
+        isIframe: false,
+        provider: 'ॲप वरून आलेला मूळ व्हिडिओ (Original App Video)'
+      };
+    }
+
+    if (/^[a-zA-Z0-9_.-]+\.(mp4|mov|webm|mkv|avi)$/i.test(clean)) {
+      return {
+        url: `/uploads/videos/${clean}`,
+        isIframe: false,
+        provider: 'ॲप वरून आलेला मूळ व्हिडिओ (Original App Video)'
+      };
+    }
+
+    // 1. Direct Web URLs (HTTP / HTTPS / Blob / Data)
+    if (clean.startsWith('http://') || clean.startsWith('https://') || clean.startsWith('blob:') || clean.startsWith('data:')) {
+      if (clean.includes('mediadelivery.net/')) {
+        return { 
+          url: clean.includes('?') ? clean : `${clean}?autoplay=true&preload=true`, 
+          isIframe: true,
+          provider: 'Bunny Stream HD'
+        };
+      }
+      if (clean.includes('firebasestorage.googleapis.com')) {
+        return {
+          url: clean,
+          isIframe: false,
+          provider: 'Firebase Storage'
+        };
+      }
+      if (clean.includes('youtube.com') || clean.includes('youtu.be')) {
+        const ytMatch = clean.match(/(?:youtu\.be\/|v=|\/embed\/|\/watch\?v=)([^&?/]+)/);
+        const ytId = ytMatch ? ytMatch[1] : '';
+        return { 
+          url: `https://www.youtube.com/embed/${ytId}?autoplay=1`, 
+          isIframe: true,
+          provider: 'YouTube'
+        };
+      }
+      return { url: clean, isIframe: false, provider: 'Web Direct Stream' };
+    }
+
+    // 2. Bunny GUID (UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)
+    const uuidMatch = clean.match(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+    if (uuidMatch) {
+      return {
+        url: `https://iframe.mediadelivery.net/embed/809137/${uuidMatch[1]}?autoplay=true&preload=true`,
+        isIframe: true,
+        provider: 'Bunny Stream HD'
+      };
+    }
+
+    // 3. Firebase Storage path (e.g. gs:// or grievances/...)
+    if (clean.startsWith('gs://') || clean.startsWith('grievances/')) {
+      const filePath = clean.replace('gs://graminbharattv-f8994.firebasestorage.app/', '').replace('gs://', '');
+      return {
+        url: `https://firebasestorage.googleapis.com/v0/b/graminbharattv-f8994.firebasestorage.app/o/${encodeURIComponent(filePath)}?alt=media`,
+        isIframe: false,
+        provider: 'Firebase Storage'
+      };
+    }
+
+    // Fallback: local uploaded video
+    return {
+      url: `/uploads/videos/${clean}`,
+      isIframe: false,
+      provider: 'ॲप वरून आलेला मूळ व्हिडिओ (Original App Video)'
+    };
+  };
 
   // New Grievance Modal State
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -172,39 +280,60 @@ export default function GrievancesPage() {
     }
   };
 
-  const loadData = async () => {
-    setLoading(true);
-    const list = await firestoreService.getGrievances();
-    setGrievances(list);
-    setLoading(false);
+  const loadData = async (silent = false) => {
+    if (!silent && grievances.length === 0) {
+      setLoading(true);
+    }
+    try {
+      const list = await firestoreService.getGrievances();
+      if (Array.isArray(list)) {
+        if (list.length > 0) {
+          setGrievances(list);
+        } else if (!silent) {
+          setGrievances([]);
+        }
+      }
+    } catch (err) {
+      console.warn('Error loading grievances:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
-    loadData();
+    loadData(false);
 
-    // Auto-poll grievances every 8 seconds so app submissions appear live
-    const interval = setInterval(loadData, 8000);
+    // Silent background poll every 10 seconds without flashing or hiding the UI
+    const interval = setInterval(() => {
+      loadData(true);
+    }, 10000);
 
-    const handleGrievanceEvent = () => loadData();
+    const handleGrievanceEvent = () => loadData(true);
     window.addEventListener('ott_grievance_created', handleGrievanceEvent);
-    window.addEventListener('storage', handleGrievanceEvent);
 
     return () => {
       clearInterval(interval);
       window.removeEventListener('ott_grievance_created', handleGrievanceEvent);
-      window.removeEventListener('storage', handleGrievanceEvent);
     };
   }, []);
 
   const handleStatusChange = async (id: string, status: 'pending' | 'verified' | 'published' | 'resolved') => {
-    await firestoreService.updateGrievanceStatus(id, status);
     setGrievances(prev => prev.map(g => g.id === id ? { ...g, status } : g));
+    try {
+      await firestoreService.updateGrievanceStatus(id, status);
+    } catch (err) {
+      console.error('Error updating status:', err);
+    }
   };
 
   const handleDelete = async (id: string) => {
     if (!confirm(t('deleteConfirmGrievance'))) return;
-    await firestoreService.deleteGrievance(id);
     setGrievances(prev => prev.filter(g => g.id !== id));
+    try {
+      await firestoreService.deleteGrievance(id);
+    } catch (err) {
+      console.error('Error deleting grievance:', err);
+    }
   };
 
   const handleCreateGrievance = async (e: React.FormEvent) => {
@@ -303,11 +432,13 @@ export default function GrievancesPage() {
 
   const filtered = grievances.filter(g => {
     const matchesStatus = selectedStatus === 'all' || g.status === selectedStatus;
-    const matchesSearch = searchQuery === '' || 
-      g.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      g.district.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      g.village.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      g.citizenName.toLowerCase().includes(searchQuery.toLowerCase());
+    const q = (searchQuery || '').toLowerCase().trim();
+    const matchesSearch = !q || 
+      (g.title || '').toLowerCase().includes(q) ||
+      (g.district || '').toLowerCase().includes(q) ||
+      (g.village || '').toLowerCase().includes(q) ||
+      (g.citizenName || '').toLowerCase().includes(q) ||
+      (g.category || '').toLowerCase().includes(q);
     return matchesStatus && matchesSearch;
   });
 
@@ -339,7 +470,7 @@ export default function GrievancesPage() {
           </button>
 
           <button
-            onClick={loadData}
+            onClick={() => loadData(false)}
             className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl border border-slate-200 transition cursor-pointer"
           >
             {t('refreshDataBtn')}
@@ -347,9 +478,14 @@ export default function GrievancesPage() {
         </div>
       </div>
 
-      {/* KPI Stats Grid */}
+      {/* KPI Stats Grid - Clickable to filter */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="p-5 rounded-2xl bg-white border border-amber-200 shadow-luxury">
+        <div 
+          onClick={() => setSelectedStatus(selectedStatus === 'pending' ? 'all' : 'pending')}
+          className={`p-5 rounded-2xl bg-white border shadow-luxury cursor-pointer transition select-none ${
+            selectedStatus === 'pending' ? 'ring-2 ring-amber-500 border-amber-400 bg-amber-50/20' : 'border-amber-200 hover:border-amber-300'
+          }`}
+        >
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider">
               {t('pendingReview')}
@@ -360,7 +496,12 @@ export default function GrievancesPage() {
           <span className="text-[10px] text-slate-400">{lang === 'mr' ? 'नवीन आलेल्या तक्रारी' : lang === 'hi' ? 'नई शिकायतें' : 'Newly submitted'}</span>
         </div>
 
-        <div className="p-5 rounded-2xl bg-white border border-cyan-200 shadow-luxury">
+        <div 
+          onClick={() => setSelectedStatus(selectedStatus === 'verified' ? 'all' : 'verified')}
+          className={`p-5 rounded-2xl bg-white border shadow-luxury cursor-pointer transition select-none ${
+            selectedStatus === 'verified' ? 'ring-2 ring-cyan-500 border-cyan-400 bg-cyan-50/20' : 'border-cyan-200 hover:border-cyan-300'
+          }`}
+        >
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-bold text-cyan-800 uppercase tracking-wider">{t('statusVerified')}</span>
             <CheckCircle2 className="w-4 h-4 text-cyan-600" />
@@ -369,7 +510,12 @@ export default function GrievancesPage() {
           <span className="text-[10px] text-slate-400">{lang === 'mr' ? 'पडताळणी पूर्ण' : lang === 'hi' ? 'सत्यापित' : 'Verification Complete'}</span>
         </div>
 
-        <div className="p-5 rounded-2xl bg-white border border-rose-200 shadow-luxury">
+        <div 
+          onClick={() => setSelectedStatus(selectedStatus === 'published' ? 'all' : 'published')}
+          className={`p-5 rounded-2xl bg-white border shadow-luxury cursor-pointer transition select-none ${
+            selectedStatus === 'published' ? 'ring-2 ring-rose-500 border-rose-400 bg-rose-50/20' : 'border-rose-200 hover:border-rose-300'
+          }`}
+        >
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-bold text-rose-800 uppercase tracking-wider">{lang === 'mr' ? 'बातम्यांमध्ये प्रसिद्ध' : lang === 'hi' ? 'समाचारों में प्रकाशित' : 'Published to OTT'}</span>
             <Sparkles className="w-4 h-4 text-rose-600" />
@@ -378,7 +524,12 @@ export default function GrievancesPage() {
           <span className="text-[10px] text-slate-400">{lang === 'mr' ? 'बातम्यांमध्ये प्रसिद्ध' : lang === 'hi' ? 'प्रकाशित' : 'Published'}</span>
         </div>
 
-        <div className="p-5 rounded-2xl bg-white border border-emerald-200 shadow-luxury">
+        <div 
+          onClick={() => setSelectedStatus(selectedStatus === 'resolved' ? 'all' : 'resolved')}
+          className={`p-5 rounded-2xl bg-white border shadow-luxury cursor-pointer transition select-none ${
+            selectedStatus === 'resolved' ? 'ring-2 ring-emerald-500 border-emerald-400 bg-emerald-50/20' : 'border-emerald-200 hover:border-emerald-300'
+          }`}
+        >
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider">{t('statusResolved')}</span>
             <CheckCircle2 className="w-4 h-4 text-emerald-600" />
@@ -469,7 +620,144 @@ export default function GrievancesPage() {
                 </div>
 
                 <h3 className="font-bold text-slate-900 text-sm mb-1">{g.title}</h3>
-                <p className="text-xs text-slate-600 line-clamp-3 mb-4 leading-relaxed">{g.description}</p>
+                <p className="text-xs text-slate-600 line-clamp-3 mb-3 leading-relaxed">{g.description}</p>
+
+                {/* Attached Video / Image Preview (from Mobile App or Web) */}
+                {g.mediaUrl && (
+                  <div className="mb-4">
+                    {g.mediaType === 'video' || /\.(mp4|mov|webm|mkv|avi)/i.test(g.mediaUrl) || g.mediaUrl.startsWith('media://') ? (
+                      playingCardVideoId === g.id ? (
+                        /* Live In-Card Video Player (Bunny / Firebase / Web Stream) */
+                        <div className="relative rounded-2xl overflow-hidden bg-black border border-slate-700 shadow-2xl">
+                          <div className="flex items-center justify-between px-3.5 py-2 bg-slate-900 border-b border-slate-800 text-xs">
+                            <div className="flex items-center gap-2 text-rose-400 font-bold">
+                              <Film className="w-4 h-4 animate-pulse" />
+                              <span className="text-white text-xs">{lang === 'mr' ? 'व्हिडिओ प्ले होत आहे' : lang === 'hi' ? 'वीडियो चल रहा है' : 'Playing Video'}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedMediaGrievance(g);
+                                }}
+                                className="text-slate-400 hover:text-white px-2 py-0.5 rounded-lg hover:bg-slate-800 transition text-[10px] font-bold flex items-center gap-1 cursor-pointer"
+                                title="मोठ्या स्क्रीनवर पाहा"
+                              >
+                                <ExternalLink className="w-3 h-3" />
+                                <span>मोठ्या स्क्रीनवर</span>
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setPlayingCardVideoId(null);
+                                }}
+                                className="text-slate-400 hover:text-rose-400 px-2 py-0.5 rounded-lg hover:bg-slate-800 transition text-[10px] font-bold flex items-center gap-1 cursor-pointer"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                                <span>बंद करा</span>
+                              </button>
+                            </div>
+                          </div>
+                          {(() => {
+                            const playable = getPlayableVideoUrl(g.mediaUrl);
+                            return playable.isIframe ? (
+                              <iframe
+                                src={playable.url}
+                                allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;"
+                                allowFullScreen
+                                className="w-full h-64 sm:h-72 border-0 bg-black"
+                              />
+                            ) : (
+                              <video
+                                src={playable.url}
+                                controls
+                                autoPlay
+                                playsInline
+                                className="w-full h-64 sm:h-72 object-contain bg-black"
+                              />
+                            );
+                          })()}
+                        </div>
+                      ) : (
+                        /* Click to Play Video Card */
+                        <div className="relative rounded-2xl overflow-hidden bg-slate-950 border border-slate-700/60 shadow-lg group">
+                          {/* Live Video Frame Preview from actual file */}
+                          <video
+                            src={`${getPlayableVideoUrl(g.mediaUrl).url}#t=0.5`}
+                            preload="metadata"
+                            muted
+                            playsInline
+                            className="absolute inset-0 w-full h-full object-cover opacity-50 group-hover:opacity-75 transition duration-300 pointer-events-none"
+                          />
+                          <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/60 to-slate-950/30 pointer-events-none" />
+
+                          <div 
+                            className="relative h-48 flex flex-col items-center justify-center p-4 text-center cursor-pointer select-none"
+                            onClick={() => setPlayingCardVideoId(g.id)}
+                          >
+                            {/* Play Button Icon */}
+                            <div className="w-14 h-14 rounded-full bg-rose-600/95 border border-white/30 flex items-center justify-center text-white shadow-2xl group-hover:scale-110 group-hover:bg-rose-500 transition duration-300">
+                              <Play className="w-6 h-6 fill-current translate-x-0.5 text-white" />
+                            </div>
+
+                            {/* Watch Video Button Badges */}
+                            <div className="mt-3 flex items-center gap-2">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setPlayingCardVideoId(g.id);
+                                }}
+                                className="px-3.5 py-1.5 rounded-full bg-rose-600 hover:bg-rose-500 shadow-lg flex items-center gap-1.5 text-white text-xs font-bold transition cursor-pointer"
+                              >
+                                <Play className="w-3.5 h-3.5 fill-current" />
+                                <span>{lang === 'mr' ? 'व्हिडिओ प्ले करा' : lang === 'hi' ? 'वीडियो चलाएं' : 'Play Video'}</span>
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedMediaGrievance(g);
+                                }}
+                                className="px-3.5 py-1.5 rounded-full bg-slate-800/90 hover:bg-slate-700 border border-slate-600/60 shadow-lg flex items-center gap-1.5 text-slate-200 text-xs font-bold transition cursor-pointer"
+                              >
+                                <ExternalLink className="w-3.5 h-3.5" />
+                                <span>मोठ्या स्क्रीनवर</span>
+                              </button>
+                            </div>
+
+                            <div className="flex items-center gap-2 mt-2">
+                              <span className="px-2 py-0.5 rounded-full bg-emerald-950/80 border border-emerald-800/60 text-[10px] text-emerald-300 font-semibold flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                ॲप व्हिडिओ
+                              </span>
+                              <span className="text-[10px] text-slate-300 font-mono">
+                                {g.mediaUrl.replace('media://', '').replace('/uploads/videos/', '')}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    ) : (
+                      /* Attached Photo / Image Preview */
+                      <div 
+                        className="relative rounded-2xl overflow-hidden border border-slate-200 shadow-sm max-h-56 group cursor-pointer bg-slate-100"
+                        onClick={() => setSelectedMediaGrievance(g)}
+                      >
+                        <img
+                          src={g.mediaUrl}
+                          alt={g.title}
+                          className="w-full max-h-56 object-cover group-hover:scale-105 transition duration-300"
+                          onError={(e) => {
+                            (e.target as HTMLElement).style.display = 'none';
+                          }}
+                        />
+                        <div className="absolute bottom-2 left-2 px-2.5 py-1 rounded-full bg-black/75 backdrop-blur-md text-white text-[10px] font-bold flex items-center gap-1 shadow">
+                          <ImageIcon className="w-3 h-3 text-amber-400" />
+                          <span>{lang === 'mr' ? 'फोटो जोडला आहे' : lang === 'hi' ? 'फोटो संलग्न' : 'Photo Attached'}</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <div className="grid grid-cols-2 gap-2 p-3.5 bg-slate-50 rounded-2xl text-xs text-slate-700 mb-4 border border-slate-100">
                   <div className="flex items-center gap-1.5">
@@ -554,6 +842,107 @@ export default function GrievancesPage() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Media Preview Modal */}
+      {selectedMediaGrievance && (
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 text-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-800 max-h-[92vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-full bg-rose-600/20 text-rose-500 flex items-center justify-center border border-rose-500/30">
+                  <Film className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-slate-100">{selectedMediaGrievance.title}</h3>
+                  <p className="text-[11px] text-slate-400">
+                    {selectedMediaGrievance.village}, {selectedMediaGrievance.district} • {selectedMediaGrievance.citizenName} ({selectedMediaGrievance.contactNumber || 'N/A'})
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedMediaGrievance(null)}
+                className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Media Content */}
+            <div className="rounded-2xl overflow-hidden bg-black border border-slate-800 mb-4 flex flex-col items-center justify-center min-h-[300px]">
+              {(() => {
+                const isImage = selectedMediaGrievance.mediaType === 'image' || (/\.(jpg|jpeg|png|webp|gif)/i.test(selectedMediaGrievance.mediaUrl || '') && !/\.(mp4|mov|webm|mkv)/i.test(selectedMediaGrievance.mediaUrl || ''));
+                if (isImage && (selectedMediaGrievance.mediaUrl?.startsWith('http://') || selectedMediaGrievance.mediaUrl?.startsWith('https://') || selectedMediaGrievance.mediaUrl?.startsWith('data:'))) {
+                  return (
+                    <img
+                      src={selectedMediaGrievance.mediaUrl}
+                      alt={selectedMediaGrievance.title}
+                      className="w-full max-h-[60vh] object-contain"
+                    />
+                  );
+                }
+
+                const playable = getPlayableVideoUrl(selectedMediaGrievance.mediaUrl);
+                return (
+                  <div className="w-full">
+                    <div className="px-4 py-2 bg-slate-950 border-b border-slate-800 flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                        <span className="text-emerald-400 font-bold">{playable.provider}</span>
+                        <span className="text-slate-400">• Library: 809137</span>
+                      </div>
+                      <span className="text-[10px] font-mono text-slate-400">
+                        {selectedMediaGrievance.mediaUrl || 'Live Stream'}
+                      </span>
+                    </div>
+                    {playable.isIframe ? (
+                      <iframe
+                        src={playable.url}
+                        allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;"
+                        allowFullScreen
+                        className="w-full h-80 sm:h-96 md:h-[420px] border-0 bg-black"
+                      />
+                    ) : (
+                      <video
+                        src={playable.url}
+                        controls
+                        autoPlay
+                        playsInline
+                        className="w-full max-h-[60vh] object-contain bg-black"
+                      />
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex items-center justify-between pt-2">
+              <div className="text-xs text-slate-400">
+                तक्रार स्थिती: <span className="font-bold text-amber-400 capitalize">{selectedMediaGrievance.status}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    const item = selectedMediaGrievance;
+                    setSelectedMediaGrievance(null);
+                    handlePublishAsNews(item);
+                  }}
+                  className="px-4 py-2 bg-[#EA580C] hover:bg-[#C2410C] text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition shadow cursor-pointer"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>१-क्लिक बातमी प्रसिद्ध करा</span>
+                </button>
+                <button
+                  onClick={() => setSelectedMediaGrievance(null)}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-xl transition cursor-pointer"
+                >
+                  बंद करा (Close)
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

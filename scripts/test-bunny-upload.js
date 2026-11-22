@@ -23,8 +23,8 @@ function httpRequest(urlStr, options = {}, body = null) {
 }
 
 async function testBunnyStreamUpload() {
-  const libId = '767488';
-  const apiKey = 'afb32a68-d916-4eac-83bb2d60a0df-3935-46e4';
+  const libId = '809137';
+  const apiKey = 'a33345d2-ba76-49d0-8206c316903f-a89e-4e41';
 
   console.log('1. Creating video in Bunny Stream library', libId);
   const createRes = await httpRequest(`https://video.bunnycdn.com/library/${libId}/videos`, {

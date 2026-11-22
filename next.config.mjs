@@ -2,6 +2,7 @@
 const nextConfig = {
   reactStrictMode: false,
   swcMinify: true,
+  compress: true,
   typescript: {
     ignoreBuildErrors: true,
   },
@@ -14,6 +15,12 @@ const nextConfig = {
         protocol: 'https',
         hostname: '**',
       },
+    ],
+  },
+  experimental: {
+    optimizePackageImports: [
+      'lucide-react',
+      'recharts',
     ],
   },
   onDemandEntries: {

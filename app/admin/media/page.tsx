@@ -23,11 +23,13 @@ import {
   CheckCircle2,
   X
 } from 'lucide-react';
+import dynamic from 'next/dynamic';
 import { Modal } from '@/components/ui/modal';
-import { ConfirmDialog } from '@/components/confirm-dialog';
-import { BunnyUploader } from '@/components/bunny-uploader';
-import { VideoPlayer } from '@/components/video-player';
-import { ConnectAudioModal } from '@/components/connect-audio-modal';
+
+const ConfirmDialog = dynamic(() => import('@/components/confirm-dialog').then(mod => mod.ConfirmDialog), { ssr: false });
+const BunnyUploader = dynamic(() => import('@/components/bunny-uploader').then(mod => mod.BunnyUploader), { ssr: false });
+const VideoPlayer = dynamic(() => import('@/components/video-player').then(mod => mod.VideoPlayer), { ssr: false });
+const ConnectAudioModal = dynamic(() => import('@/components/connect-audio-modal').then(mod => mod.ConnectAudioModal), { ssr: false });
 import { firestoreService } from '@/lib/firestore-service';
 import { ContentCategory, ContentItem, ContentType } from '@/lib/types';
 import { formatDuration, slugify, cn } from '@/lib/utils';
@@ -86,11 +88,34 @@ function MediaContentPageInner() {
     ? 'Namdar Maharashtra' 
     : rawCategoryQuery;
 
-  const [categories, setCategories] = useState<ContentCategory[]>([]);
+  const isPodcastCat = (c: any) => {
+    const name = String(c?.nameEnglish || '').toLowerCase().trim();
+    const mr = String(c?.nameMarathi || '').toLowerCase().trim();
+    const id = String(c?.id || '').toLowerCase().trim();
+    const type = String(c?.type || '').toLowerCase().trim();
+    return name.includes('podcast') || mr.includes('पॉडकास्ट') || id.includes('podcast') || type === 'podcast';
+  };
+
+  const isPodcastContent = (i: any) => {
+    return i.type === 'podcast' || i.id?.startsWith('pod-') || i.genres?.some((g: string) => g.toLowerCase().includes('podcast'));
+  };
+
+  // Instant 0ms cache-first state initialization
+  const [categories, setCategories] = useState<ContentCategory[]>(() => {
+    if (typeof window !== 'undefined') {
+      return firestoreService.getLocalCategories().filter(c => !isPodcastCat(c));
+    }
+    return [];
+  });
   const [selectedCategory, setSelectedCategory] = useState<string>(currentCategoryQuery);
-  const [items, setItems] = useState<ContentItem[]>([]);
+  const [items, setItems] = useState<ContentItem[]>(() => {
+    if (typeof window !== 'undefined') {
+      return firestoreService.getLocalContent().filter(i => !isPodcastContent(i));
+    }
+    return [];
+  });
   const [filteredItems, setFilteredItems] = useState<ContentItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('table');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDistrict, setSelectedDistrict] = useState('All');
@@ -108,23 +133,16 @@ function MediaContentPageInner() {
   const [currentItem, setCurrentItem] = useState<Partial<ContentItem>>({});
   const [tagsInput, setTagsInput] = useState('');
 
-  // Load Categories & Content
-  const loadData = async () => {
-    setLoading(true);
+  // Load Categories & Content (Background Silent SWR)
+  const loadData = async (silent = true) => {
+    if (!silent) setLoading(true);
     try {
       const [allCats, allContent] = await Promise.all([
         firestoreService.getCategories(),
         firestoreService.getContent(),
       ]);
-      const isPodcastCat = (c: any) => {
-        const name = String(c?.nameEnglish || '').toLowerCase().trim();
-        const mr = String(c?.nameMarathi || '').toLowerCase().trim();
-        const id = String(c?.id || '').toLowerCase().trim();
-        const type = String(c?.type || '').toLowerCase().trim();
-        return name.includes('podcast') || mr.includes('पॉडकास्ट') || id.includes('podcast') || type === 'podcast';
-      };
       setCategories(allCats.filter(c => !isPodcastCat(c)));
-      setItems(allContent.filter(i => i.type !== 'podcast' && !i.id?.startsWith('pod-') && !i.genres?.some(g => g.toLowerCase().includes('podcast'))));
+      setItems(allContent.filter(i => !isPodcastContent(i)));
     } catch (err) {
       console.error('Failed to load media data:', err);
     } finally {
@@ -299,8 +317,8 @@ function MediaContentPageInner() {
         host: currentItem.host || currentItem.reporterName || (isPodcastItem ? 'पॉडकास्ट निवेदक' : ''),
         language: currentItem.language || ['मराठी (Marathi)'],
         releaseDate: currentItem.releaseDate || new Date().toISOString().split('T')[0],
-        poster: currentItem.poster || (isPodcastItem ? 'https://images.unsplash.com/photo-1592982537447-7440770cbfc9?w=800' : 'https://vz-92cc7e0f-cd7.b-cdn.net/e6eb731d-a1b1-4885-a40b-54c4e860c78e/thumbnail.jpg'),
-        banner: currentItem.banner || currentItem.poster || (isPodcastItem ? 'https://images.unsplash.com/photo-1592982537447-7440770cbfc9?w=1200' : 'https://vz-92cc7e0f-cd7.b-cdn.net/e6eb731d-a1b1-4885-a40b-54c4e860c78e/thumbnail.jpg'),
+        poster: currentItem.poster || (isPodcastItem ? 'https://images.unsplash.com/photo-1592982537447-7440770cbfc9?w=800' : 'https://vz-7a23e2a4-01b.b-cdn.net/e6eb731d-a1b1-4885-a40b-54c4e860c78e/thumbnail.jpg'),
+        banner: currentItem.banner || currentItem.poster || (isPodcastItem ? 'https://images.unsplash.com/photo-1592982537447-7440770cbfc9?w=1200' : 'https://vz-7a23e2a4-01b.b-cdn.net/e6eb731d-a1b1-4885-a40b-54c4e860c78e/thumbnail.jpg'),
         trailerUrl: currentItem.trailerUrl || '',
         isPremium: !!currentItem.isPremium,
         isFeatured: currentItem.isFeatured ?? true,
@@ -429,9 +447,9 @@ function MediaContentPageInner() {
   return (
     <div className="space-y-6">
       {/* Header Banner - Clean White Luxury Card matching News Management */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-7 rounded-3xl bg-white border border-slate-200 shadow-luxury">
-        <div>
-          <h1 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2.5">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-4 sm:p-7 rounded-2xl sm:rounded-3xl bg-white border border-slate-200 shadow-luxury">
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2 flex-wrap">
             {getCategoryIcon(selectedCategory)}
             <span>{getCategoryLabel(selectedCategory, activeCatMeta?.nameMarathi)}</span>
             {lang === 'en' && activeCatMeta?.nameMarathi && activeCatMeta.nameMarathi !== selectedCategory && (
@@ -450,11 +468,11 @@ function MediaContentPageInner() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5 flex-wrap shrink-0">
+        <div className="flex items-center gap-2.5 flex-wrap shrink-0 w-full sm:w-auto">
           <button
             type="button"
             onClick={handleOpenCreate}
-            className="px-5 py-2.5 bg-[#EA580C] hover:bg-[#C2410C] active:scale-95 text-white font-bold text-xs rounded-xl flex items-center gap-2 transition shadow-sm shrink-0 cursor-pointer"
+            className="w-full sm:w-auto justify-center px-5 py-2.5 bg-[#EA580C] hover:bg-[#C2410C] active:scale-95 text-white font-bold text-xs rounded-xl flex items-center gap-2 transition shadow-sm shrink-0 cursor-pointer"
           >
             <span>{lang === 'mr' ? `नवीन ${getCategoryLabel(selectedCategory, activeCatMeta?.nameMarathi)} जोडा` : lang === 'hi' ? `नया ${getCategoryLabel(selectedCategory, activeCatMeta?.nameMarathi)} जोड़ें` : `Add ${selectedCategory}`}</span>
           </button>
@@ -463,8 +481,8 @@ function MediaContentPageInner() {
 
 
       {/* Filter & Search Bar matching News Management */}
-      <div className="flex flex-col sm:flex-row gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-        <div className="relative flex-1">
+      <div className="flex flex-col md:flex-row gap-3 bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200 shadow-sm">
+        <div className="relative flex-1 min-w-0">
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
@@ -475,58 +493,62 @@ function MediaContentPageInner() {
                 ? 'बातमीचे शीर्षक, जिल्हा किंवा वार्ताहराचे नाव शोधा...'
                 : 'Search title, district or reporter name...'
             }
-            className="w-full pl-9 pr-4 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 focus:outline-none focus:border-rose-500 focus:bg-white"
+            className="w-full pl-9 pr-4 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-800 placeholder-slate-400 focus:outline-none focus:border-rose-500 focus:bg-white transition-colors"
           />
         </div>
 
-        <select
-          value={selectedDistrict}
-          onChange={(e) => setSelectedDistrict(e.target.value)}
-          className="px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-700 focus:outline-none focus:border-rose-500"
-        >
-          <option value="All">{lang === 'mr' ? 'सर्व जिल्हे' : 'All Districts'}</option>
-          {MAHARASHTRA_DISTRICTS.filter(d => !d.includes('All')).map((dist) => {
-            const cleanLabel = lang === 'mr' 
-              ? (dist.match(/\((.*?)\)/)?.[1]?.split(' /')[0] || dist)
-              : dist.split(' (')[0];
-            return (
-              <option key={dist} value={dist.split(' ')[0]}>{cleanLabel}</option>
-            );
-          })}
-        </select>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full md:w-auto">
+          <select
+            value={selectedDistrict}
+            onChange={(e) => setSelectedDistrict(e.target.value)}
+            className="w-full sm:w-44 px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:border-rose-500 font-medium truncate cursor-pointer shadow-xs"
+          >
+            <option value="All">{lang === 'mr' ? 'सर्व जिल्हे' : 'All Districts'}</option>
+            {MAHARASHTRA_DISTRICTS.filter(d => !d.includes('All')).map((dist) => {
+              const cleanLabel = lang === 'mr' 
+                ? (dist.match(/\((.*?)\)/)?.[1]?.split(' /')[0] || dist)
+                : dist.split(' (')[0];
+              return (
+                <option key={dist} value={dist.split(' ')[0]}>{cleanLabel}</option>
+              );
+            })}
+          </select>
 
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-700 focus:outline-none focus:border-rose-500"
-        >
-          <option value="all">{lang === 'mr' ? 'सर्व स्थिती (All)' : 'All Status'}</option>
-          <option value="published">{lang === 'mr' ? 'प्रकाशित (Published)' : 'Published'}</option>
-          <option value="draft">{lang === 'mr' ? 'मसुदा (Draft)' : 'Draft'}</option>
-        </select>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="w-full sm:w-36 px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:border-rose-500 font-medium truncate cursor-pointer shadow-xs"
+          >
+            <option value="all">{lang === 'mr' ? 'सर्व स्थिती (All)' : 'All Status'}</option>
+            <option value="published">{lang === 'mr' ? 'प्रकाशित (Published)' : 'Published'}</option>
+            <option value="draft">{lang === 'mr' ? 'मसुदा (Draft)' : 'Draft'}</option>
+          </select>
+        </div>
 
-        <div className="flex items-center border border-slate-200 rounded-lg p-0.5 bg-slate-50 shrink-0">
+        <div className="flex items-center justify-end border border-slate-200 rounded-xl p-0.5 bg-slate-50 shrink-0 self-end sm:self-auto">
           <button
             type="button"
             onClick={() => setViewMode('table')}
             className={cn(
-              'p-1.5 rounded-md transition cursor-pointer',
+              'px-2.5 py-1.5 rounded-lg transition cursor-pointer flex items-center gap-1.5 text-xs font-semibold',
               viewMode === 'table' ? 'bg-white text-rose-600 shadow-xs' : 'text-slate-400 hover:text-slate-600'
             )}
             title="Table View"
           >
             <List className="w-4 h-4" />
+            <span className="inline sm:hidden">{lang === 'mr' ? 'तक्ता' : 'Table'}</span>
           </button>
           <button
             type="button"
             onClick={() => setViewMode('grid')}
             className={cn(
-              'p-1.5 rounded-md transition cursor-pointer',
+              'px-2.5 py-1.5 rounded-lg transition cursor-pointer flex items-center gap-1.5 text-xs font-semibold',
               viewMode === 'grid' ? 'bg-white text-rose-600 shadow-xs' : 'text-slate-400 hover:text-slate-600'
             )}
             title="Grid View"
           >
             <LayoutGrid className="w-4 h-4" />
+            <span className="inline sm:hidden">{lang === 'mr' ? 'ग्रिड' : 'Grid'}</span>
           </button>
         </div>
       </div>
@@ -556,7 +578,7 @@ function MediaContentPageInner() {
           </button>
         </div>
       ) : viewMode === 'table' ? (
-        <div className="space-y-2">
+        <div className="space-y-2 min-w-0 max-w-full">
           {/* Mobile Horizontal Scroll Hint */}
           <div className="sm:hidden flex items-center justify-between px-3 py-1.5 bg-amber-50/90 border border-amber-200/70 rounded-xl text-[11px] text-amber-900 font-semibold shadow-xs">
             <span className="flex items-center gap-1.5">
@@ -591,6 +613,8 @@ function MediaContentPageInner() {
                         <img 
                           src={getSafeImageUrl(item.poster || item.banner || (item.videoId ? `/api/bunny/thumbnail?videoId=${item.videoId}` : ''))} 
                           alt={item.title} 
+                          loading="lazy"
+                          decoding="async"
                           onError={handleImageError}
                           className="w-14 h-9 rounded-lg object-cover border border-slate-200 shrink-0 shadow-sm bg-slate-100" 
                         />
@@ -667,12 +691,22 @@ function MediaContentPageInner() {
               className="group relative rounded-2xl bg-white border border-[#E5DBCA] overflow-hidden shadow-xs hover:shadow-md transition flex flex-col"
             >
               {/* Thumbnail */}
-              <div className="relative aspect-video bg-slate-100 overflow-hidden">
+              <div className="relative aspect-video bg-slate-900 overflow-hidden flex items-center justify-center">
+                {/* Ambient Blurred Backdrop */}
+                <img
+                  src={getSafeImageUrl(item.poster || item.banner, DEFAULT_MOVIE_POSTER)}
+                  alt=""
+                  aria-hidden="true"
+                  className="absolute inset-0 w-full h-full object-cover blur-md scale-110 opacity-50 pointer-events-none"
+                />
+                {/* Full Image Visible */}
                 <img
                   src={getSafeImageUrl(item.poster || item.banner, DEFAULT_MOVIE_POSTER)}
                   alt={item.title}
+                  loading="lazy"
+                  decoding="async"
                   onError={handleImageError}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                  className="relative z-1 max-w-full max-h-full w-auto h-auto object-contain group-hover:scale-[1.02] transition-transform duration-300 drop-shadow-md"
                 />
                 <div className="absolute top-2 left-2 flex items-center gap-1.5">
                   <span className="px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-xs text-[10px] font-bold text-white">
@@ -962,7 +996,7 @@ function MediaContentPageInner() {
                       videoUrl: e.target.value,
                       videoId: e.target.value 
                     }))}
-                    placeholder="https://vz-92cc7e0f-cd7.b-cdn.net/audio/podcast.mp3 किंवा Bunny.net URL"
+                    placeholder="https://vz-7a23e2a4-01b.b-cdn.net/audio/podcast.mp3 किंवा Bunny.net URL"
                     className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-rose-200 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-rose-500 text-slate-800"
                   />
                   <p className="text-[11px] text-rose-700 font-medium">
@@ -1083,7 +1117,7 @@ function MediaContentPageInner() {
 
 export default function MediaContentPage() {
   return (
-    <Suspense fallback={<div className="p-8 text-center text-xs text-slate-400 font-bold">Loading...</div>}>
+    <Suspense fallback={null}>
       <MediaContentPageInner />
     </Suspense>
   );

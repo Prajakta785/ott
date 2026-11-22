@@ -33,8 +33,14 @@ try {
   if (typeof window !== "undefined") {
     isSupported().then((supported) => {
       if (supported) {
-        analytics = getAnalytics(app);
+        try {
+          analytics = getAnalytics(app);
+        } catch {
+          // Unsupported environment (e.g. extension or incognito restrictions)
+        }
       }
+    }).catch(() => {
+      // Ignore unsupported analytics environments
     });
   }
 } catch (e) {

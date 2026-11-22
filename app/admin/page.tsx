@@ -22,9 +22,11 @@ import {
   Headphones,
   Music
 } from 'lucide-react';
+import dynamic from 'next/dynamic';
 import { StatsCard } from '@/components/stats-card';
-import { ConfirmDialog } from '@/components/confirm-dialog';
-import { ConnectAudioModal } from '@/components/connect-audio-modal';
+
+const ConfirmDialog = dynamic(() => import('@/components/confirm-dialog').then(mod => mod.ConfirmDialog), { ssr: false });
+const ConnectAudioModal = dynamic(() => import('@/components/connect-audio-modal').then(mod => mod.ConnectAudioModal), { ssr: false });
 import { firestoreService } from '@/lib/firestore-service';
 import { ContentItem, User, Subscription } from '@/lib/types';
 import { formatCurrency, formatViews } from '@/lib/utils';
@@ -112,29 +114,29 @@ export default function DashboardPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
-            {hasAccessTo('/live') && (
-              <Link href="/live">
+            {hasAccessTo('/admin/live') && (
+              <Link href="/admin/live">
                 <button className="px-4 py-2 rounded-xl bg-[#DC2626] hover:bg-[#B91C1C] text-white text-xs font-bold flex items-center gap-2 shadow-sm transition active:scale-95">
                   <Radio className="w-3.5 h-3.5 text-white" /> {t('actionLiveTV')}
                 </button>
               </Link>
             )}
-            {hasAccessTo('/news') && (
-              <Link href="/news">
+            {hasAccessTo('/admin/news') && (
+              <Link href="/admin/news">
                 <button className="px-4 py-2 rounded-xl bg-[#059669] hover:bg-[#047857] text-white text-xs font-bold flex items-center gap-2 shadow-sm transition active:scale-95">
                   <Newspaper className="w-3.5 h-3.5 text-white" /> {t('actionNews')}
                 </button>
               </Link>
             )}
-            {hasAccessTo('/movies') && (
-              <Link href="/movies?action=create">
+            {hasAccessTo('/admin/movies') && (
+              <Link href="/admin/movies?action=create">
                 <button className="px-4 py-2 rounded-xl bg-[#EA580C] hover:bg-[#C2410C] text-white text-xs font-bold flex items-center gap-2 shadow-sm transition active:scale-95">
                   {t('actionMovie')}
                 </button>
               </Link>
             )}
-            {hasAccessTo('/series') && (
-              <Link href="/series?action=create">
+            {hasAccessTo('/admin/series') && (
+              <Link href="/admin/series?action=create">
                 <button className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-white border border-white/20 text-xs font-bold flex items-center gap-2 transition active:scale-95">
                   <Tv className="w-3.5 h-3.5 text-slate-200" /> {t('actionSeries')}
                 </button>
@@ -231,7 +233,7 @@ export default function DashboardPage() {
             <h3 className="text-base font-bold text-[#2D2522]">{t('catalogTitle')}</h3>
             <p className="text-xs text-[#7A6F68] mt-0.5">{t('catalogDesc')}</p>
           </div>
-          <Link href="/movies" className="text-xs font-bold text-[#EA580C] hover:text-[#C2410C] flex items-center gap-1">
+          <Link href="/admin/movies" className="text-xs font-bold text-[#EA580C] hover:text-[#C2410C] flex items-center gap-1">
             {t('viewFullCatalog')} <ArrowUpRight className="w-3.5 h-3.5" />
           </Link>
         </div>
@@ -241,12 +243,12 @@ export default function DashboardPage() {
             <Sparkles className="w-8 h-8 text-[#EA580C] mx-auto mb-2 opacity-80" />
             <p className="text-sm font-bold text-[#2D2522]">{t('noCatalogItems')}</p>
             <div className="flex items-center justify-center gap-3 mt-4">
-              <Link href="/movies?action=create">
+              <Link href="/admin/movies?action=create">
                 <button className="px-4 py-2 bg-[#EA580C] hover:bg-[#C2410C] text-white text-xs font-bold rounded-xl shadow-sm transition flex items-center gap-1.5">
                   {t('actionMovie')}
                 </button>
               </Link>
-              <Link href="/news">
+              <Link href="/admin/news">
                 <button className="px-4 py-2 bg-white hover:bg-[#FAF7F2] text-[#2D2522] border border-[#E5DBCA] text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-sm">
                   <Newspaper className="w-3.5 h-3.5 text-[#166534]" /> {t('actionNews')}
                 </button>
@@ -275,6 +277,8 @@ export default function DashboardPage() {
                         <img 
                           src={getSafeImageUrl(item.poster || item.banner || (item.videoId ? `/api/bunny/thumbnail?videoId=${item.videoId}` : ''))} 
                           alt={item.title} 
+                          loading="lazy"
+                          decoding="async"
                           onError={(e) => handleImageError(e)}
                           className="w-12 h-16 rounded-lg object-cover border border-[#E5DBCA] shrink-0 shadow-sm bg-slate-100" 
                         />

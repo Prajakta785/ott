@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import https from 'https';
 import { URL } from 'url';
+import { decryptVideoUrl } from './crypto-utils';
 
 const bunnyHttpsAgent = new https.Agent({ rejectUnauthorized: false, keepAlive: true });
 
@@ -83,12 +84,12 @@ export class BunnyService {
     cdnHostname?: string;
     tokenSecurityKey?: string;
   }) {
-    this.apiKey = config?.apiKey || process.env.BUNNY_STREAM_API_KEY || process.env.NEXT_PUBLIC_BUNNY_API_KEY || 'afb32a68-d916-4eac-83bb2d60a0df-3935-46e4';
-    this.streamLibraryId = config?.streamLibraryId || process.env.BUNNY_STREAM_LIBRARY_ID || process.env.NEXT_PUBLIC_BUNNY_STREAM_LIBRARY_ID || '767488';
+    this.apiKey = config?.apiKey || process.env.BUNNY_STREAM_API_KEY || process.env.NEXT_PUBLIC_BUNNY_API_KEY || 'a33345d2-ba76-49d0-8206c316903f-a89e-4e41';
+    this.streamLibraryId = config?.streamLibraryId || process.env.BUNNY_STREAM_LIBRARY_ID || process.env.NEXT_PUBLIC_BUNNY_STREAM_LIBRARY_ID || '809137';
     this.storageZoneName = config?.storageZoneName || process.env.BUNNY_STORAGE_ZONE_NAME || process.env.NEXT_PUBLIC_BUNNY_STORAGE_ZONE || 'graminbharat';
     this.storageApiKey = config?.storageApiKey || process.env.BUNNY_STORAGE_API_KEY || process.env.NEXT_PUBLIC_BUNNY_STORAGE_API_KEY || '2d3836f0-1ac0-4550-bc5638b69bd8-18c0-45d9';
     this.storageHostname = config?.storageHostname || process.env.BUNNY_STORAGE_HOSTNAME || 'storage.bunnycdn.com';
-    this.cdnHostname = config?.cdnHostname || process.env.BUNNY_CDN_HOSTNAME || process.env.NEXT_PUBLIC_BUNNY_CDN_HOSTNAME || 'vz-92cc7e0f-cd7.b-cdn.net';
+    this.cdnHostname = config?.cdnHostname || process.env.BUNNY_CDN_HOSTNAME || process.env.NEXT_PUBLIC_BUNNY_CDN_HOSTNAME || 'vz-7a23e2a4-01b.b-cdn.net';
     this.tokenSecurityKey = config?.tokenSecurityKey || process.env.BUNNY_TOKEN_SECURITY_KEY || process.env.BUNNY_TOKEN_AUTH_KEY || 'af71bff6-aa4a-4222-a99e-9589d3bed97c';
   }
 
@@ -315,7 +316,7 @@ export class BunnyService {
    */
   async createVideoStreamUpload(title: string): Promise<BunnyUploadSession> {
     const fallbackId = `${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 8)}`;
-    const defaultLibraryId = this.streamLibraryId || '767488';
+    const defaultLibraryId = this.streamLibraryId || '809137';
 
     if (!this.apiKey || !this.streamLibraryId) {
       return {
@@ -387,10 +388,15 @@ export class BunnyService {
     isEmbed: boolean;
     isValid: boolean;
   } {
-    const libId = customLibraryId || this.streamLibraryId || '767488';
-    const host = customCdnHost || this.cdnHostname || 'vz-92cc7e0f-cd7.b-cdn.net';
+    const libId = customLibraryId || this.streamLibraryId || '809137';
+    const host = customCdnHost || this.cdnHostname || 'vz-7a23e2a4-01b.b-cdn.net';
     
     let raw = (input || '').trim();
+
+    // 0. Decrypt if identifier or URL was stored with AES-256 encryption
+    if (raw.startsWith('enc_v1:')) {
+      raw = decryptVideoUrl(raw).trim();
+    }
 
     // Auto-map local file:// paths to uploaded Bunny Stream GUIDs
     if (raw.startsWith('file:///')) {
@@ -492,7 +498,7 @@ export class BunnyService {
       };
     }
 
-    // 3. Bunny CDN URL (e.g. https://vz-92cc7e0f-cd7.b-cdn.net/VIDEO_GUID/playlist.m3u8)
+    // 3. Bunny CDN URL (e.g. https://vz-7a23e2a4-01b.b-cdn.net/VIDEO_GUID/playlist.m3u8)
     const cdnMatch = raw.match(/(?:https?:\/\/)?([^/]+\.b-cdn\.net)\/([^/?#]+)(?:\/playlist\.m3u8|\/play_.*)?/i);
     if (cdnMatch) {
       const parsedHost = cdnMatch[1];
@@ -580,9 +586,10 @@ export class BunnyService {
   /**
    * Generate a signed Bunny Stream / CDN URL with token authentication and expiration
    */
-  generateSignedStreamUrl(videoGuid: string, expiresInSeconds: number = 3600): string {
+  generateSignedStreamUrl(videoGuid: string, expiresInSeconds: number = 7200): string {
     const expires = Math.floor(Date.now() / 1000) + expiresInSeconds;
-    const cleanGuid = videoGuid.replace(/^guid-/, '');
+    let target = videoGuid.startsWith('enc_v1:') ? decryptVideoUrl(videoGuid) : videoGuid;
+    const cleanGuid = target.replace(/^guid-/, '').trim();
     const path = `/${cleanGuid}/playlist.m3u8`;
 
     if (!this.tokenSecurityKey) {

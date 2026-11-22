@@ -23,6 +23,8 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { firestoreService } from '@/lib/firestore-service';
+import { db } from '@/lib/firebase';
+import { collection, onSnapshot } from 'firebase/firestore';
 import { ContentItem, LiveChannel, NotificationItem } from '@/lib/types';
 import { LanguageSwitcher } from '@/components/language-switcher';
 import { useLanguage } from '@/lib/i18n';
@@ -39,18 +41,30 @@ export function Header({ onToggleSidebar }: { onToggleSidebar?: () => void }) {
   const addMenuRef = useRef<HTMLDivElement>(null);
 
   const handleNotificationSeen = async (id: string, deepLinkUrl?: string) => {
-    // 1. Immediately remove from local view with responsive UI
+    // 1. Mark as read locally WITHOUT deleting from app or database
     setNotifications(prev => {
-      const next = prev.filter(n => n.id !== id);
-      if (next.length === 0) setHasUnread(false);
-      return next;
+      const updated = prev.map(n => n.id === id ? { ...n, isUnread: false, read: true } : n);
+      const stillUnread = updated.some(n => n.isUnread);
+      setHasUnread(stillUnread);
+      return updated;
     });
-    // 2. Automatically delete notification from database/store
-    await firestoreService.deleteNotification(id);
+
+    // 2. Persist seen status safely
+    firestoreService.markNotificationSeen(id).catch(() => {});
+
     if (deepLinkUrl) {
       setShowNotifications(false);
       router.push(deepLinkUrl);
     }
+  };
+
+  const handleDeleteNotification = async (id: string) => {
+    setNotifications(prev => {
+      const next = prev.filter(n => n.id !== id);
+      setHasUnread(next.some(n => n.isUnread));
+      return next;
+    });
+    await firestoreService.deleteNotification(id);
   };
 
   const handleClearAllNotifications = async () => {
@@ -72,32 +86,54 @@ export function Header({ onToggleSidebar }: { onToggleSidebar?: () => void }) {
   useEffect(() => {
     async function loadNotifs() {
       try {
-        const notifs = await firestoreService.getNotifications();
+        const rawNotifs = await firestoreService.getNotifications(true);
+        const notifs = rawNotifs.filter(n => {
+          const t = (n.title || '').toLowerCase();
+          const m = (n.message || '').toLowerCase();
+          return !t.includes('sairat') && !m.includes('sairat') && !t.includes('सैराट') && !m.includes('सैराट');
+        });
         setNotifications(notifs);
-        if (notifs.length === 0) {
-          setHasUnread(false);
-        } else {
-          setHasUnread(true);
-        }
+        const unreadCount = notifs.filter(n => n.isUnread !== false && !n.read).length;
+        setHasUnread(unreadCount > 0);
       } catch (e) {
         console.warn('Failed to load notifications in header:', e);
       }
     }
     loadNotifs();
 
-    // Auto-poll notifications every 8 seconds so app submissions appear live without refresh
-    const interval = setInterval(loadNotifs, 8000);
+    // Fast-poll notifications every 8 seconds only when tab is active
+    const interval = setInterval(() => { 
+      if (typeof document !== 'undefined' && document.hidden) return; 
+      loadNotifs(); 
+    }, 8000);
 
     const handleUpdate = () => loadNotifs();
     window.addEventListener('ott_notification_created', handleUpdate);
     window.addEventListener('ott_grievance_created', handleUpdate);
-    window.addEventListener('storage', handleUpdate);
+
+    // Instant real-time Firestore listeners for new notifications and grievances from Citizen App
+    let unsubNotifs: (() => void) | undefined;
+    let unsubGrievances: (() => void) | undefined;
+    if (db) {
+      try {
+        unsubNotifs = onSnapshot(collection(db, 'notifications'), () => {
+          loadNotifs();
+        }, () => {});
+      } catch {}
+
+      try {
+        unsubGrievances = onSnapshot(collection(db, 'grievances'), () => {
+          loadNotifs();
+        }, () => {});
+      } catch {}
+    }
 
     return () => {
       clearInterval(interval);
       window.removeEventListener('ott_notification_created', handleUpdate);
       window.removeEventListener('ott_grievance_created', handleUpdate);
-      window.removeEventListener('storage', handleUpdate);
+      if (unsubNotifs) unsubNotifs();
+      if (unsubGrievances) unsubGrievances();
     };
   }, []);
 
@@ -342,22 +378,29 @@ export function Header({ onToggleSidebar }: { onToggleSidebar?: () => void }) {
 
         {/* Notification Bell */}
         <div className="relative" ref={notifContainerRef}>
-          <button
-            onClick={() => {
-              setShowNotifications(!showNotifications);
-              if (!showNotifications) setHasUnread(false);
-            }}
-            className="relative p-2 rounded-full bg-white text-[#2D2522] hover:bg-[#FAF7F2] border border-[#E5DBCA] transition-colors shadow-xs cursor-pointer active:scale-95"
-            title={t('navNotifications') || 'Notifications'}
-          >
-            <Bell className="w-4 h-4 text-[#2D2522]" />
-            {hasUnread && (
-              <>
-                <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-[#DC2626] animate-ping" />
-                <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-[#DC2626]" />
-              </>
-            )}
-          </button>
+          {(() => {
+            const unreadCount = notifications.filter(n => n.isUnread !== false && !n.read).length;
+            return (
+              <button
+                onClick={() => {
+                  setShowNotifications(!showNotifications);
+                  if (!showNotifications) setHasUnread(false);
+                }}
+                className="relative p-2 rounded-full bg-white text-[#2D2522] hover:bg-[#FAF7F2] border border-[#E5DBCA] transition-colors shadow-xs cursor-pointer active:scale-95"
+                title={t('navNotifications') || 'Notifications'}
+              >
+                <Bell className="w-4 h-4 text-[#2D2522]" />
+                {hasUnread && (
+                  <>
+                    <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-[#DC2626] text-white text-[10px] font-black flex items-center justify-center border-2 border-white shadow-xs">
+                      {unreadCount > 9 ? '9+' : unreadCount > 0 ? unreadCount : '!'}
+                    </span>
+                    <span className="absolute top-0 right-0 w-2.5 h-2.5 rounded-full bg-[#DC2626] animate-ping" />
+                  </>
+                )}
+              </button>
+            );
+          })()}
 
           {showNotifications && (
             <div className="absolute right-0 mt-2 w-80 sm:w-96 rounded-2xl bg-white border border-[#E5DBCA] shadow-soft-lg z-50 overflow-hidden animate-in fade-in zoom-in-95">
@@ -371,15 +414,15 @@ export function Header({ onToggleSidebar }: { onToggleSidebar?: () => void }) {
                       {notifications.length}
                     </span>
                   )}
-                  <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200">
-                    ⚡ {lang === 'mr' ? 'पाहिल्यावर ऑटो-डिलीट' : 'Auto-delete on seen'}
+                  <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200">
+                    ⏰ {lang === 'mr' ? '१२ PM नंतर ऑटो-डिलीट' : 'Auto-delete after 12 PM'}
                   </span>
                 </div>
                 {notifications.length > 0 && (
                   <button
                     onClick={handleClearAllNotifications}
                     className="text-[11px] font-bold text-[#DC2626] hover:text-[#991B1B] flex items-center gap-1 transition-colors cursor-pointer"
-                    title={lang === 'mr' ? 'सर्व सूचना वाचून डिलीट करा' : 'Clear & delete all'}
+                    title={lang === 'mr' ? 'सर्व सूचना डिलीट करा' : 'Clear & delete all'}
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                     <span>{lang === 'mr' ? 'सर्व साफ करा' : 'Clear All'}</span>
@@ -395,10 +438,10 @@ export function Header({ onToggleSidebar }: { onToggleSidebar?: () => void }) {
                       <Sparkles className="w-5 h-5 text-[#EA580C]" />
                     </div>
                     <p className="text-xs font-bold text-[#2D2522]">
-                      {lang === 'mr' ? 'सर्व सूचना पाहिल्या आहेत' : lang === 'hi' ? 'सभी सूचनाएं देख ली गई हैं' : 'All caught up!'}
+                      {lang === 'mr' ? 'कोणतीही नवीन सूचना नाही' : lang === 'hi' ? 'कोई नई सूचना नहीं है' : 'No new notifications'}
                     </p>
                     <p className="text-[11px] text-[#7A6F68] mt-1">
-                      {lang === 'mr' ? 'पाहिलेल्या सूचना आपोआप काढून टाकल्या जातात.' : lang === 'hi' ? 'देखी गई सूचनाएं स्वतः हटा दी जाती हैं।' : 'Seen notifications are automatically deleted.'}
+                      {lang === 'mr' ? 'सूचना १२:०० PM नंतर आपोआप काढून टाकल्या जातील.' : lang === 'hi' ? 'सूचनाएं दोपहर १२:०० बजे के बाद स्वतः हटा दी जाती हैं।' : 'Notifications auto-delete after 12:00 PM.'}
                     </p>
                   </div>
                 ) : (
@@ -411,23 +454,30 @@ export function Header({ onToggleSidebar }: { onToggleSidebar?: () => void }) {
                         className={`p-3.5 transition-all cursor-pointer group relative active:scale-[0.99] ${
                           isGrievance 
                             ? 'bg-amber-50/70 hover:bg-amber-100/80 border-l-4 border-l-[#EA580C]' 
-                            : 'hover:bg-emerald-50/40'
+                            : item.isUnread 
+                            ? 'bg-rose-50/40 hover:bg-rose-50/70 border-l-4 border-l-rose-500' 
+                            : 'hover:bg-slate-50/60 opacity-85'
                         }`}
-                        title={lang === 'mr' ? 'पाहण्यासाठी क्लिक करा (आपोआप डिलीट होईल)' : 'Click to view (will auto-delete)'}
+                        title={lang === 'mr' ? 'पाहण्यासाठी क्लिक करा (ॲपमधून डिलीट होणार नाही)' : 'Click to view'}
                       >
                         <div className="flex items-start justify-between gap-2">
-                          <p className={`text-xs font-bold leading-snug transition-colors ${
-                            isGrievance ? 'text-[#7C2D12] group-hover:text-[#EA580C]' : 'text-[#2D2522] group-hover:text-[#166534]'
-                          }`}>
-                            {item.title}
-                          </p>
+                          <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                            {item.isUnread && (
+                              <span className="w-2 h-2 rounded-full bg-rose-600 shrink-0" />
+                            )}
+                            <p className={`text-xs font-bold leading-snug truncate transition-colors ${
+                              isGrievance ? 'text-[#7C2D12] group-hover:text-[#EA580C]' : 'text-[#2D2522] group-hover:text-rose-600'
+                            }`}>
+                              {item.title}
+                            </p>
+                          </div>
                           <div className="flex items-center gap-1 shrink-0">
                             {isGrievance ? (
                               <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-orange-100 text-[#C2410C] border border-orange-300 flex items-center gap-1 shadow-2xs">
                                 📢 {lang === 'mr' ? 'जनतेचा आवाज' : lang === 'hi' ? 'जनता की आवाज' : 'Citizen Voice'}
                               </span>
                             ) : (
-                              <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-[#FAF7F2] text-[#7A6F68] border border-[#E5DBCA]">
+                              <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-[#FAF7F2] text-[#7A6F68] border border-[#E5DBCA]">
                                 {item.category?.replace('_', ' ') || 'Alert'}
                               </span>
                             )}
@@ -435,10 +485,10 @@ export function Header({ onToggleSidebar }: { onToggleSidebar?: () => void }) {
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleNotificationSeen(item.id);
+                                handleDeleteNotification(item.id);
                               }}
                               className="p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                              title={lang === 'mr' ? 'पाहिले - डिलीट करा' : 'Seen & Delete'}
+                              title={lang === 'mr' ? 'डिलीट करा' : 'Delete'}
                             >
                               <Trash2 className="w-3 h-3" />
                             </button>
@@ -448,12 +498,17 @@ export function Header({ onToggleSidebar }: { onToggleSidebar?: () => void }) {
                         <div className="flex items-center justify-between mt-2 text-[10px] text-[#A89C94]">
                           <span className="flex items-center gap-1">
                             <Clock className="w-3 h-3" />
-                            {item.sentAt ? item.sentAt.substring(0, 10) : 'Active'}
+                            {item.sentAt ? new Date(item.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Active'}
                           </span>
-                          <span className={`${isGrievance ? 'text-[#EA580C]' : 'text-emerald-700'} font-bold flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity`}>
-                            <Check className="w-3 h-3" />
-                            {lang === 'mr' ? 'तक्रार पाहण्यासाठी क्लिक करा' : 'Click to view grievance'}
-                          </span>
+                          {isGrievance ? (
+                            <span className="text-[10px] font-bold text-[#EA580C] bg-[#FFF1ED] px-2 py-0.5 rounded-full border border-[#FED7AA] flex items-center gap-1">
+                              {lang === 'mr' ? 'तक्रार निवारणासाठी क्लिक करा' : 'Click to inspect grievance'} →
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-mono text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                              ⏰ {lang === 'mr' ? '१२ PM डिलीट' : '12 PM Auto-delete'}
+                            </span>
+                          )}
                         </div>
                       </div>
                     );
@@ -464,7 +519,7 @@ export function Header({ onToggleSidebar }: { onToggleSidebar?: () => void }) {
               {/* Footer */}
               <div className="p-2.5 bg-[#FAF7F2] border-t border-[#E5DBCA]">
                 <Link
-                  href="/notifications"
+                  href="/admin/notifications"
                   onClick={() => setShowNotifications(false)}
                   className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold text-[#EA580C] hover:text-[#C2410C] hover:bg-white transition-colors group"
                 >

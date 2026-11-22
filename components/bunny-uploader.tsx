@@ -25,6 +25,10 @@ import { Modal } from './ui/modal';
 import { bunnyService, BunnyVideoItem } from '@/lib/bunny-service';
 import { getSafeImageUrl, handleImageError } from '@/lib/image-utils';
 
+const BUNNY_LIB_ID = process.env.NEXT_PUBLIC_BUNNY_STREAM_LIBRARY_ID || '809137';
+const BUNNY_CDN = process.env.NEXT_PUBLIC_BUNNY_CDN_HOSTNAME || 'vz-7a23e2a4-01b.b-cdn.net';
+const BUNNY_API_KEY = process.env.NEXT_PUBLIC_BUNNY_API_KEY || 'a33345d2-ba76-49d0-8206c316903f-a89e-4e41';
+
 interface BunnyUploaderProps {
   type: 'video' | 'audio' | 'image';
   currentValue?: string;
@@ -163,12 +167,12 @@ export function BunnyUploader({
 
       const data = await res.json();
       if (data.success && data.guid) {
-        setImportMessage(`व्हिडिओ यशस्वीरीत्या Bunny Stream (Library 767488) मध्ये सेव्ह झाला!`);
+        setImportMessage(`व्हिडिओ यशस्वीरीत्या Bunny Stream (Library ${BUNNY_LIB_ID}) मध्ये सेव्ह झाला!`);
         setManualInput(data.guid);
         onUploadComplete({
           urlOrGuid: data.guid,
           duration: 5400,
-          thumbnail: `https://vz-92cc7e0f-cd7.b-cdn.net/${data.guid}/thumbnail.jpg`,
+          thumbnail: `https://${BUNNY_CDN}/${data.guid}/thumbnail.jpg`,
           resolution: '4K UHD HDR',
         });
         setEncodingStage('ready');
@@ -232,8 +236,9 @@ export function BunnyUploader({
 
     if (type === 'video') {
       try {
-        setUploadProgress(10);
-        setStatusText(`Analyzing video metadata...`);
+        setUploadProgress(5);
+        setEncodingStage('uploading');
+        setStatusText(`व्हिडिओची माहिती तपासत आहे...`);
 
         // Get video duration from client
         let estimatedDuration = 5400;
@@ -252,109 +257,80 @@ export function BunnyUploader({
           });
         } catch {}
 
-        setUploadProgress(15);
-        setStatusText(`Bunny.net Stream (Library 767488) शी जोडणी करत आहे...`);
+        const originalSizeMb = (file.size / (1024 * 1024)).toFixed(1);
+        setUploadProgress(10);
+        setStatusText(`स्थानिक सर्व्हरवर अपलोड होत आहे (${originalSizeMb} MB)...`);
 
-        const cleanTitle = contentTitle?.trim() || file.name.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9\s-_]/g, ' ').trim() || `Video_${Date.now()}`;
+        // Send to /api/bunny/upload for Local Storage + CRF 21 Visually Lossless Compression + Bunny Upload
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('folder', 'videos');
 
-        // 1. Create Video Object in Bunny Stream Library 767488
-        const sessionRes = await fetch('/api/bunny/upload', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'create_stream_video',
-            title: cleanTitle,
-          }),
-        });
-
-        if (!sessionRes.ok) {
-          const errData = await sessionRes.json().catch(() => ({}));
-          throw new Error(errData.error || `Bunny Stream session creation failed (${sessionRes.status})`);
-        }
-
-        const session = await sessionRes.json();
-        const guid = session.guid || session.videoId;
-        const uploadUrl = session.uploadUrl || `https://video.bunnycdn.com/library/767488/videos/${guid}`;
-        const accessKey = session.accessKey || 'afb32a68-d916-4eac-83bb2d60a0df-3935-46e4';
-
-        setUploadProgress(20);
-        setStatusText(`Bunny.net Stream मध्ये थेट अपलोड सुरू आहे...`);
-
-        // 2. Direct binary PUT upload to Bunny Stream API
-        const doDirectStreamUpload = (): Promise<void> => {
+        // Use XMLHttpRequest to track upload progress accurately
+        const uploadToServerWithProgress = (): Promise<any> => {
           return new Promise((resolve, reject) => {
             const xhr = new XMLHttpRequest();
-            xhr.open('PUT', uploadUrl, true);
-            xhr.setRequestHeader('AccessKey', accessKey);
-            xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+            xhr.open('POST', '/api/bunny/upload', true);
 
             xhr.upload.onprogress = (event) => {
               if (event.lengthComputable) {
-                const percent = Math.min(99, Math.round((event.loaded / event.total) * 100));
-                setUploadProgress(percent);
+                // Upload to server is 0 to 40%
+                const pct = Math.min(40, Math.round((event.loaded / event.total) * 40));
+                setUploadProgress(pct);
                 const loadedMb = (event.loaded / (1024 * 1024)).toFixed(1);
-                const totalMb = (event.total / (1024 * 1024)).toFixed(1);
-                setStatusText(`Bunny.net Stream मध्ये अपलोड होत आहे: ${loadedMb} MB / ${totalMb} MB (${percent}%)`);
+                setStatusText(`स्थानिक सर्व्हरवर अपलोड होत आहे: ${loadedMb} MB / ${originalSizeMb} MB (${pct}%)`);
               }
+            };
+
+            // When upload to server completes, server starts FFmpeg compression & Bunny transfer
+            xhr.upload.onload = () => {
+              setUploadProgress(45);
+              setEncodingStage('encoding');
+              setStatusText(`क्वालिटी न गमावता कॉम्प्रेशन सुरू आहे (CRF 21 Lossless) आणि स्थानिक बॅकअप सेव्ह होत आहे...`);
             };
 
             xhr.onload = () => {
               if (xhr.status >= 200 && xhr.status < 300) {
-                resolve();
+                try {
+                  const data = JSON.parse(xhr.responseText);
+                  resolve(data);
+                } catch {
+                  resolve({});
+                }
               } else {
-                reject(new Error(`Direct Stream upload failed with status ${xhr.status}`));
+                reject(new Error(`Server processing failed with status ${xhr.status}`));
               }
             };
 
-            xhr.onerror = () => reject(new Error('Network error during Bunny Stream upload'));
-            xhr.send(file);
+            xhr.onerror = () => reject(new Error('Network error during upload to server'));
+            xhr.send(formData);
           });
         };
 
-        // Fallback: server-side upload if direct browser PUT fails
-        const doServerStreamUpload = async (): Promise<string> => {
-          setStatusText(`सर्व्हरद्वारे Bunny.net Stream वर अपलोड होत आहे...`);
-          const formData = new FormData();
-          formData.append('file', file);
-          formData.append('folder', 'videos');
+        const result = await uploadToServerWithProgress();
 
-          const sRes = await fetch('/api/bunny/upload', {
-            method: 'POST',
-            body: formData,
-          });
-
-          if (!sRes.ok) {
-            const err = await sRes.json().catch(() => ({}));
-            throw new Error(err.error || `Server stream upload failed (${sRes.status})`);
-          }
-
-          const sData = await sRes.json();
-          return sData.guid || sData.videoId || guid;
-        };
-
-        let finalGuid = guid;
-        try {
-          await doDirectStreamUpload();
-        } catch (directErr) {
-          console.warn('Direct stream upload notice, trying server stream fallback:', directErr);
-          setUploadProgress(50);
-          finalGuid = await doServerStreamUpload();
+        if (!result.success || !result.guid) {
+          throw new Error(result.error || 'Video compression and Bunny upload failed');
         }
+
+        const finalGuid = result.guid || result.videoId;
+        const savedPct = result.savedPercentage || 0;
+        const compSizeMb = result.compressedSize ? (result.compressedSize / (1024 * 1024)).toFixed(1) : originalSizeMb;
 
         setUploadProgress(100);
         setEncodingStage('ready');
-        setStatusText('व्हिडिओ Bunny.net Stream मध्ये यशस्वीरीत्या अपलोड झाला!');
+        setStatusText(`यशस्वी! कॉम्प्रेशन पूर्ण (${savedPct}% बचत: ${compSizeMb} MB) आणि Bunny.net Stream वर अपलोड झाले!`);
         setIsUploading(false);
 
         onUploadComplete({
           urlOrGuid: finalGuid,
           duration: estimatedDuration,
-          thumbnail: `https://vz-92cc7e0f-cd7.b-cdn.net/${finalGuid}/thumbnail.jpg`,
+          thumbnail: `https://${BUNNY_CDN}/${finalGuid}/thumbnail.jpg`,
           resolution: '4K UHD HDR',
         });
       } catch (err: any) {
         console.error('Video upload failed:', err);
-        setStatusText(`Upload error: ${err?.message || 'Failed'}`);
+        setStatusText(`त्रुटी: ${err?.message || 'Failed'}`);
         setIsUploading(false);
       }
       return;
@@ -420,7 +396,7 @@ export function BunnyUploader({
     onUploadComplete({
       urlOrGuid: finalVal,
       duration: type === 'video' ? 5400 : undefined,
-      thumbnail: `https://vz-92cc7e0f-cd7.b-cdn.net/${finalVal}/thumbnail.jpg`,
+      thumbnail: `https://${BUNNY_CDN}/${finalVal}/thumbnail.jpg`,
       resolution: '4K UHD HDR',
     });
     setEncodingStage('ready');
@@ -602,7 +578,7 @@ export function BunnyUploader({
                 ) : type === 'video' ? (
                   <div className="relative w-32 h-18 aspect-video rounded-xl overflow-hidden border-2 border-white shadow-soft bg-black shrink-0">
                     <img
-                      src={`https://vz-92cc7e0f-cd7.b-cdn.net/${currentValue}/thumbnail.jpg`}
+                      src={`https://${BUNNY_CDN}/${currentValue}/thumbnail.jpg`}
                       alt="Bunny Stream Thumbnail"
                       onError={(e) => {
                         (e.target as HTMLElement).style.display = 'none';
@@ -665,7 +641,7 @@ export function BunnyUploader({
                 </p>
                 <p className="text-[11px] text-[#7A6F68]">
                   {type === 'video'
-                    ? 'MP4, MKV (Auto HLS ABR Transcoding | Lib: 767488)'
+                    ? `MP4, MKV (Auto HLS ABR Transcoding | Lib: ${BUNNY_LIB_ID})`
                     : type === 'audio'
                     ? 'MP3, WAV, AAC'
                     : 'JPG, PNG, WebP'}
@@ -684,7 +660,7 @@ export function BunnyUploader({
             setIsLibraryOpen(false);
             setPreviewGuid(null);
           }}
-          title="🐰 Bunny Stream व्हिडिओ लायब्ररी (Library ID: 767488)"
+          title={`🐰 Bunny Stream व्हिडिओ लायब्ररी (Library ID: ${BUNNY_LIB_ID})`}
           description="Bunny.net Stream मधील सर्व व्हिडिओ येथे उपलब्ध आहेत. तुम्हाला हवा असलेला व्हिडिओ 1-क्लिकमध्ये निवडा."
           maxWidth="4xl"
         >
@@ -708,7 +684,7 @@ export function BunnyUploader({
                     {bunnyVideos.length} व्हिडिओ
                   </Badge>
                   <span className="text-[11px] font-mono text-[#A89C94] hidden md:inline">
-                    vz-92cc7e0f-cd7.b-cdn.net
+                    {BUNNY_CDN}
                   </span>
                 </div>
 
@@ -742,7 +718,7 @@ export function BunnyUploader({
                 </div>
                 <div className="aspect-video w-full rounded-xl overflow-hidden bg-black">
                   <iframe
-                    src={`https://iframe.mediadelivery.net/embed/767488/${previewGuid}?autoplay=true&preload=true`}
+                    src={`https://iframe.mediadelivery.net/embed/${BUNNY_LIB_ID}/${previewGuid}?autoplay=true&preload=true`}
                     loading="lazy"
                     className="w-full h-full border-0"
                     allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;"
@@ -767,7 +743,7 @@ export function BunnyUploader({
                   कोणतेही व्हिडिओ सापडले नाहीत
                 </p>
                 <p className="text-xs text-[#7A6F68]">
-                  {searchQuery ? 'दुसरे नाव किंवा GUID टाकून पहा.' : 'Bunny Stream Library 767488 मध्ये अद्याप व्हिडिओ नाहीत.'}
+                  {searchQuery ? 'दुसरे नाव किंवा GUID टाकून पहा.' : `Bunny Stream Library ${BUNNY_LIB_ID} मध्ये अद्याप व्हिडिओ नाहीत.`}
                 </p>
               </div>
             ) : (

@@ -6,6 +6,21 @@ export const dynamic = 'force-dynamic';
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
+    const targetGuid = searchParams.get('guid') || searchParams.get('videoId');
+
+    if (targetGuid) {
+      const video = await bunnyService.getVideo(targetGuid);
+      return NextResponse.json({
+        success: !!video,
+        data: video,
+      }, {
+        headers: {
+          'Cache-Control': 'no-store, max-age=0',
+          'Access-Control-Allow-Origin': '*',
+        }
+      });
+    }
+
     const page = parseInt(searchParams.get('page') || '1', 10);
     const itemsPerPage = parseInt(searchParams.get('itemsPerPage') || '50', 10);
 

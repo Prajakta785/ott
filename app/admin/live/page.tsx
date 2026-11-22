@@ -3,7 +3,10 @@
 import React, { useState, useEffect } from 'react';
 import { firestoreService } from '@/lib/firestore-service';
 import { LiveChannel } from '@/lib/types';
-import { VideoPlayer } from '@/components/video-player';
+import dynamic from 'next/dynamic';
+
+const VideoPlayer = dynamic(() => import('@/components/video-player').then(mod => mod.VideoPlayer), { ssr: false });
+const BunnyUploader = dynamic(() => import('@/components/bunny-uploader').then(mod => mod.BunnyUploader), { ssr: false });
 import { 
   Radio, 
   Plus, 
@@ -22,7 +25,6 @@ import {
   Sparkles,
   RadioTower
 } from 'lucide-react';
-import { BunnyUploader } from '@/components/bunny-uploader';
 import { bunnyService } from '@/lib/bunny-service';
 import { useLanguage } from '@/lib/i18n';
 
@@ -169,9 +171,9 @@ export default function LiveStreamsPage() {
     const updated: LiveChannel = {
       ...ch,
       streamUrl: bunnyGuid,
-      backupStreamUrl: `https://iframe.mediadelivery.net/embed/767488/${bunnyGuid}`,
-      poster: ch.poster || `https://vz-92cc7e0f-cd7.b-cdn.net/${bunnyGuid}/thumbnail.jpg`,
-      logo: ch.logo || `https://vz-92cc7e0f-cd7.b-cdn.net/${bunnyGuid}/thumbnail.jpg`,
+      backupStreamUrl: `https://iframe.mediadelivery.net/embed/809137/${bunnyGuid}`,
+      poster: ch.poster || `https://vz-7a23e2a4-01b.b-cdn.net/${bunnyGuid}/thumbnail.jpg`,
+      logo: ch.logo || `https://vz-7a23e2a4-01b.b-cdn.net/${bunnyGuid}/thumbnail.jpg`,
       isLive: true,
       status: 'active',
       updatedAt: new Date().toISOString(),
@@ -239,6 +241,8 @@ export default function LiveStreamsPage() {
                   <img
                     src={ch.poster || '/brand-horizontal.png'}
                     alt={ch.channelName}
+                    loading="lazy"
+                    decoding="async"
                     onError={(e) => {
                       const target = e.currentTarget as HTMLImageElement;
                       if (!target.src.includes('brand-horizontal.png')) {
@@ -274,6 +278,8 @@ export default function LiveStreamsPage() {
                       <img
                         src={ch.logo || '/app_logo.png'}
                         alt={ch.channelName}
+                        loading="lazy"
+                        decoding="async"
                         onError={(e) => {
                           const target = e.currentTarget as HTMLImageElement;
                           if (!target.src.includes('app_logo.png')) {
@@ -464,7 +470,7 @@ export default function LiveStreamsPage() {
                     {lang === 'mr' ? 'थेट व्हिडिओ प्रवाह व Bunny Stream जोडणी' : lang === 'hi' ? 'लाइव वीडियो और Bunny Stream इंटीग्रेशन' : 'Live Stream & Bunny Stream Integration'}
                   </span>
                   <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                    Bunny Library 767488
+                    Bunny Library 809137
                   </span>
                 </div>
 
@@ -514,7 +520,7 @@ export default function LiveStreamsPage() {
                           onClick={() => setFormData({
                             ...formData,
                             streamUrl: 'e6eb731d-a1b1-4885-a40b-54c4e860c78e',
-                            poster: 'https://vz-92cc7e0f-cd7.b-cdn.net/e6eb731d-a1b1-4885-a40b-54c4e860c78e/thumbnail.jpg'
+                            poster: 'https://vz-7a23e2a4-01b.b-cdn.net/e6eb731d-a1b1-4885-a40b-54c4e860c78e/thumbnail.jpg'
                           })}
                           className="mt-1.5 px-3 py-1 bg-[#EA580C] hover:bg-[#C2410C] text-white font-bold rounded-lg cursor-pointer transition shadow-xs"
                         >

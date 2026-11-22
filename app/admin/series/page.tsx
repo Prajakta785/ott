@@ -18,14 +18,17 @@ import {
   Video,
   Headphones
 } from 'lucide-react';
+import dynamic from 'next/dynamic';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
-import { ConfirmDialog } from '@/components/confirm-dialog';
-import { BunnyUploader } from '@/components/bunny-uploader';
-import { VideoPlayer } from '@/components/video-player';
-import { ConnectAudioModal } from '@/components/connect-audio-modal';
+
+const ConfirmDialog = dynamic(() => import('@/components/confirm-dialog').then(mod => mod.ConfirmDialog), { ssr: false });
+const BunnyUploader = dynamic(() => import('@/components/bunny-uploader').then(mod => mod.BunnyUploader), { ssr: false });
+const VideoPlayer = dynamic(() => import('@/components/video-player').then(mod => mod.VideoPlayer), { ssr: false });
+const ConnectAudioModal = dynamic(() => import('@/components/connect-audio-modal').then(mod => mod.ConnectAudioModal), { ssr: false });
 import { firestoreService } from '@/lib/firestore-service';
+import { PersonInputWithPhoto } from '@/components/person-input-with-photo';
 import { ContentItem, Season, Episode } from '@/lib/types';
 import { formatDuration, formatViews, slugify } from '@/lib/utils';
 import { useAuth } from '@/lib/auth-context';
@@ -35,8 +38,13 @@ import { getSafeImageUrl, handleImageError, DEFAULT_SERIES_POSTER } from '@/lib/
 export default function SeriesPage() {
   const { canEdit, canPublish, canDelete } = useAuth();
   const { t, lang } = useLanguage();
-  const [seriesList, setSeriesList] = useState<ContentItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [seriesList, setSeriesList] = useState<ContentItem[]>(() => {
+    if (typeof window !== 'undefined') {
+      return firestoreService.getLocalContent('series');
+    }
+    return [];
+  });
+  const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
 
   // Drill-down navigation state
@@ -87,8 +95,8 @@ export default function SeriesPage() {
     item: any;
   } | null>(null);
 
-  const loadSeries = async () => {
-    setLoading(true);
+  const loadSeries = async (silent = true) => {
+    if (!silent) setLoading(true);
     const items = await firestoreService.getContent('series');
     setSeriesList(items);
     setLoading(false);
@@ -127,6 +135,9 @@ export default function SeriesPage() {
       genres: ['ग्रामीण कथा', 'Web Series'],
       cast: [],
       director: '',
+      directorPhoto: '',
+      producer: '',
+      producerPhoto: '',
       language: ['मराठी'],
       releaseDate: new Date().toISOString().split('T')[0],
       poster: '',
@@ -175,6 +186,9 @@ export default function SeriesPage() {
         genres: currentSeries.genres || ['ग्रामीण कथा', 'Web Series'],
         cast: currentSeries.cast || [],
         director: currentSeries.director || '',
+        directorPhoto: currentSeries.directorPhoto || '',
+        producer: currentSeries.producer || '',
+        producerPhoto: currentSeries.producerPhoto || '',
         language: currentSeries.language || ['मराठी'],
         releaseDate: currentSeries.releaseDate || new Date().toISOString().split('T')[0],
         poster: currentSeries.poster || '',
@@ -440,14 +454,23 @@ export default function SeriesPage() {
                   onClick={() => handleSelectSeries(series)}
                   className="group rounded-3xl bg-white border border-[#E5DBCA] overflow-hidden hover:border-[#E07A5F] hover:shadow-soft-lg transition-all duration-300 cursor-pointer flex flex-col shadow-soft"
                 >
-                  <div className="relative aspect-[16/9] w-full bg-[#F5EFE6] overflow-hidden">
+                  <div className="relative aspect-[16/9] w-full bg-[#181311] overflow-hidden flex items-center justify-center">
+                    <img
+                      src={getSafeImageUrl(series.banner || series.poster, DEFAULT_SERIES_POSTER)}
+                      alt=""
+                      aria-hidden="true"
+                      className="absolute inset-0 w-full h-full object-cover blur-xl scale-125 opacity-60 pointer-events-none"
+                    />
+                    <div className="absolute inset-0 bg-black/25 pointer-events-none" />
                     <img
                       src={getSafeImageUrl(series.banner || series.poster, DEFAULT_SERIES_POSTER)}
                       alt={series.title}
+                      loading="lazy"
+                      decoding="async"
                       onError={(e) => handleImageError(e, DEFAULT_SERIES_POSTER)}
-                      className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                      className="relative z-1 max-w-full max-h-full w-auto h-auto object-contain transition-transform duration-300 group-hover:scale-105 drop-shadow-md"
                     />
-                    <div className="absolute inset-0 bg-gradient-to-t from-[#2D2522]/80 via-transparent to-black/30" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-[#2D2522]/80 via-transparent to-black/30 pointer-events-none z-2" />
 
                     <div className="absolute top-3 left-3 right-3 flex items-center justify-between">
                       <Badge variant={series.isPremium ? 'sakura' : 'secondary'} size="sm">
@@ -519,6 +542,8 @@ export default function SeriesPage() {
               <img 
                 src={getSafeImageUrl(selectedSeries.poster || selectedSeries.banner, DEFAULT_SERIES_POSTER)} 
                 alt={selectedSeries.title} 
+                loading="lazy"
+                decoding="async"
                 onError={(e) => handleImageError(e, DEFAULT_SERIES_POSTER)}
                 className="w-full h-full object-cover" 
               />
@@ -696,6 +721,8 @@ export default function SeriesPage() {
                                 <img 
                                   src={getSafeImageUrl(ep.thumbnail || (ep.videoId ? `/api/bunny/thumbnail?videoId=${ep.videoId}` : ''), DEFAULT_SERIES_POSTER)} 
                                   alt={ep.title} 
+                                  loading="lazy"
+                                  decoding="async"
                                   onError={(e) => handleImageError(e, DEFAULT_SERIES_POSTER)}
                                   className="w-full h-full object-cover" 
                                 />
@@ -814,6 +841,29 @@ export default function SeriesPage() {
             />
           </div>
 
+          {/* Director & Producer with In-Box Photo Upload */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <PersonInputWithPhoto
+              label={lang === 'mr' ? 'दिग्दर्शक *' : lang === 'hi' ? 'निर्देशक *' : 'Director *'}
+              name={currentSeries.director || ''}
+              photoUrl={currentSeries.directorPhoto}
+              onNameChange={(val) => setCurrentSeries({ ...currentSeries, director: val })}
+              onPhotoChange={(val) => setCurrentSeries({ ...currentSeries, directorPhoto: val })}
+              placeholder={lang === 'mr' ? 'उदा. नागराज मंजुळे / प्रवीण तरडे' : lang === 'hi' ? 'उदा. नागराज मंजुले' : 'e.g. Christopher Nolan'}
+              tooltipText={lang === 'mr' ? 'दिग्दर्शकाचा फोटो जोडा' : 'Upload Director Photo'}
+            />
+
+            <PersonInputWithPhoto
+              label={lang === 'mr' ? 'निर्माता' : lang === 'hi' ? 'निर्माता' : 'Producer'}
+              name={currentSeries.producer || ''}
+              photoUrl={currentSeries.producerPhoto}
+              onNameChange={(val) => setCurrentSeries({ ...currentSeries, producer: val })}
+              onPhotoChange={(val) => setCurrentSeries({ ...currentSeries, producerPhoto: val })}
+              placeholder={lang === 'mr' ? 'उदा. ग्रामीण भारत टीव्ही प्रॉडक्शन' : lang === 'hi' ? 'उदा. ग्रामीण भारत टीवी प्रोडक्शन' : 'e.g. Gramin Bharat TV Productions'}
+              tooltipText={lang === 'mr' ? 'निर्मात्याचा फोटो जोडा' : 'Upload Producer Photo'}
+            />
+          </div>
+
           {/* Video Direct Upload to Bunny Stream for Web Series */}
           <div className="p-4 rounded-3xl bg-[#FAF7F2] border border-[#E5DBCA] space-y-3">
             <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -821,7 +871,7 @@ export default function SeriesPage() {
                 <Film className="w-4 h-4 text-[#EA580C]" /> {lang === 'mr' ? 'व्हिडिओ / पायलट फाईल अपलोड (Bunny Stream)' : lang === 'hi' ? 'वीडियो / पायलट फ़ाइल अपलोड (Bunny Stream)' : 'Web Series Video / Pilot Stream'}
               </h4>
               <div className="flex items-center gap-1.5 text-[10px] text-[#7A6F68] font-bold">
-                <span className="px-2 py-0.5 rounded-full bg-white border border-[#E5DBCA]">Lib: 767488</span>
+                <span className="px-2 py-0.5 rounded-full bg-white border border-[#E5DBCA]">Lib: 809137</span>
                 <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">ABR 4K/HD</span>
               </div>
             </div>
@@ -855,7 +905,7 @@ export default function SeriesPage() {
                     const iframeMatch = rawVal.match(/src=["']([^"']+)["']/i);
                     setCurrentSeries({ ...currentSeries, videoId: iframeMatch ? iframeMatch[1] : e.target.value });
                   }}
-                  placeholder="e.g. 767488-guid, https://iframe.mediadelivery.net/embed/..., or .m3u8/.mp4"
+                  placeholder="e.g. 809137-guid, https://iframe.mediadelivery.net/embed/..., or .m3u8/.mp4"
                   className="flex-1 bg-white border border-[#E5DBCA] rounded-2xl px-4 py-2 text-xs font-mono text-[#2D2522] focus:outline-none focus:border-[#EA580C]"
                 />
                 <Button
@@ -1066,7 +1116,7 @@ export default function SeriesPage() {
                 <Film className="w-4 h-4 text-[#EA580C]" /> {lang === 'mr' ? 'भाग व्हिडिओ फाईल अपलोड (Bunny Stream)' : 'Episode Video Stream File'}
               </h4>
               <div className="flex items-center gap-1.5 text-[10px] text-[#7A6F68] font-bold">
-                <span className="px-2 py-0.5 rounded-full bg-white border border-[#E5DBCA]">Lib: 767488</span>
+                <span className="px-2 py-0.5 rounded-full bg-white border border-[#E5DBCA]">Lib: 809137</span>
                 <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">ABR 4K/HD</span>
               </div>
             </div>
@@ -1100,7 +1150,7 @@ export default function SeriesPage() {
                     const iframeMatch = rawVal.match(/src=["']([^"']+)["']/i);
                     setCurrentEpisode({ ...currentEpisode, videoId: iframeMatch ? iframeMatch[1] : e.target.value });
                   }}
-                  placeholder="e.g. 767488-guid, https://iframe.mediadelivery.net/embed/..., or .m3u8/.mp4"
+                  placeholder="e.g. 809137-guid, https://iframe.mediadelivery.net/embed/..., or .m3u8/.mp4"
                   className="flex-1 bg-white border border-[#E5DBCA] rounded-2xl px-4 py-2 text-xs font-mono text-[#2D2522] focus:outline-none focus:border-[#EA580C]"
                 />
                 <Button

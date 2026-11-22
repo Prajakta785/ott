@@ -29,6 +29,8 @@ import {
   Subscription, 
   User
 } from './types';
+import { calculateNotificationExpiry, isNotificationExpired, ExpiryType } from './notification-expiry';
+import { encryptVideoUrl, decryptVideoUrl } from './crypto-utils';
 import { 
   initialAdmins, 
   initialAds, 
@@ -60,7 +62,7 @@ const STORAGE_KEYS = {
   ADMINS: 'ott_admin_admins_v13_clean',
   BUNNY: 'ott_admin_bunny_v12_wiped',
   GRIEVANCES: 'ott_admin_grievances_v12_wiped',
-  NOTIFICATIONS: 'ott_admin_notifications_v12_wiped',
+  NOTIFICATIONS: 'ott_admin_notifications_v13_clean',
   CATEGORIES: 'ott_admin_categories_v13_clean',
   COMPANY_INFO: 'ott_admin_company_info_v12_wiped',
   DELETED_CONTENT: 'ott_admin_deleted_content_v12_wiped',
@@ -186,6 +188,8 @@ export function cleanForFirestore<T>(data: T): T {
 
 export class FirestoreService {
   private useLive: boolean;
+  private queryCache: Map<string, { data: any; timestamp: number }> = new Map();
+  private inFlightQueries: Map<string, Promise<any>> = new Map();
 
   constructor() {
     this.useLive = isFirebaseConfigured;
@@ -199,101 +203,200 @@ export class FirestoreService {
     return this.useLive;
   }
 
-  /* ------------------- CONTENT (Movies, News, Series, Short Films, Podcasts) ------------------- */
-  async getContent(type?: ContentType): Promise<ContentItem[]> {
-    const deletedIds = getLocalDeletedIds();
-    const filterValidItems = (list: ContentItem[]) => {
-      return list
-        .map(c => ({
-          ...c,
-          genres: Array.isArray(c?.genres) ? c.genres : (c?.category ? [c.category] : []),
-        }))
-        .filter(c => {
-        // Exclude logically deleted items
-        if (deletedIds.includes(c.id)) return false;
-        
-        // Exclude dummy items and invalid videos (permanently hide from UI)
-        const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(c.videoId || '');
-        const isBunnyStorage = (c.videoId || '').includes('storage.bunnycdn.com') || (c.videoUrl || '').includes('storage.bunnycdn.com');
-        
-        if (c.type === 'series') {
-          if (c.id === 'ser-rang-majha-vegla' || (c.videoId && !isUUID && !isBunnyStorage)) return false;
-          return true;
-        }
-
-        // Podcasts & audio tracks are valid with audio/video URL or as published content
-        if (c.type === 'podcast' || c.type === 'audio') {
-          return true;
-        }
-        
-        return isUUID || isBunnyStorage;
+  /**
+   * Request Deduplication & Memory Cache
+   * Merges concurrent calls and returns cached results within TTL
+   */
+  async dedupeQuery<T>(key: string, fetcher: () => Promise<T>, ttlMs = 15000): Promise<T> {
+    const cached = this.queryCache.get(key);
+    const now = Date.now();
+    if (cached && now - cached.timestamp < ttlMs) {
+      return cached.data as T;
+    }
+    const inFlight = this.inFlightQueries.get(key);
+    if (inFlight) {
+      return inFlight as Promise<T>;
+    }
+    const p = fetcher()
+      .then(res => {
+        this.queryCache.set(key, { data: res, timestamp: Date.now() });
+        this.inFlightQueries.delete(key);
+        return res;
+      })
+      .catch(err => {
+        this.inFlightQueries.delete(key);
+        throw err;
       });
-    };
+    this.inFlightQueries.set(key, p);
+    return p;
+  }
 
-    if (this.useLive && db) {
-      try {
-        const contentRef = collection(db, 'content');
-        const q = type 
-          ? query(contentRef, where('type', '==', type)) 
-          : contentRef;
-        const snap = await timeoutPromise(getDocs(q), 3000);
-        if (!snap.empty) {
-          const items = snap.docs.map(d => ({ id: d.id, ...d.data() } as ContentItem));
-          const filtered = filterValidItems(items);
-          if (filtered.length > 0) {
-            if (!type) {
-              setLocalStore(STORAGE_KEYS.CONTENT, filtered);
-            } else {
-              const currentAll = getLocalStore<ContentItem[]>(STORAGE_KEYS.CONTENT, initialContent);
-              const merged = [...currentAll];
-              filtered.forEach(item => {
-                const idx = merged.findIndex(m => m.id === item.id);
-                if (idx >= 0) merged[idx] = item;
-                else merged.unshift(item);
-              });
-              setLocalStore(STORAGE_KEYS.CONTENT, merged);
-            }
-            return type ? filtered.filter(c => c.type === type) : filtered;
-          }
+  clearCache(keyPrefix?: string): void {
+    if (!keyPrefix) {
+      this.queryCache.clear();
+    } else {
+      Array.from(this.queryCache.keys()).forEach(k => {
+        if (k.startsWith(keyPrefix)) {
+          this.queryCache.delete(k);
         }
-      } catch (e) {
-        console.warn('Firestore getContent fallback to server API:', e);
+      });
+    }
+  }
+
+  // Synchronous Instant Getters (0ms UI render without waiting for network)
+  getLocalContent(type?: ContentType): ContentItem[] {
+    const deletedIds = getLocalDeletedIds();
+    const all = getLocalStore<ContentItem[]>(STORAGE_KEYS.CONTENT, initialContent);
+    const valid = all.filter(c => !deletedIds.includes(c.id));
+    return type ? valid.filter(c => c.type === type) : valid;
+  }
+
+  getLocalCategories(): ContentCategory[] {
+    const deletedIds = getLocalDeletedIds();
+    const all = getLocalStore<ContentCategory[]>(STORAGE_KEYS.CATEGORIES, initialCategories);
+    return all.filter(c => !deletedIds.includes(c.id));
+  }
+
+  getLocalPlans(): Plan[] {
+    const deletedIds = getLocalDeletedIds();
+    const all = getLocalStore<Plan[]>(STORAGE_KEYS.PLANS, initialPlans);
+    return all.filter(p => !deletedIds.includes(p.id));
+  }
+
+  getLocalUsers(): User[] {
+    return getLocalStore<User[]>(STORAGE_KEYS.USERS, []);
+  }
+
+  getLocalSubscriptions(): Subscription[] {
+    return getLocalStore<Subscription[]>(STORAGE_KEYS.SUBSCRIPTIONS, []);
+  }
+
+  getLocalBanners(): Banner[] {
+    const deletedIds = getLocalDeletedIds();
+    const all = getLocalStore<Banner[]>(STORAGE_KEYS.BANNERS, initialBanners);
+    return all.filter(b => !deletedIds.includes(b.id));
+  }
+
+  getLocalGrievances(): Grievance[] {
+    return getLocalStore<Grievance[]>(STORAGE_KEYS.GRIEVANCES, []);
+  }
+
+  /* ------------------- CONTENT (Movies, News, Series, Short Films, Podcasts) ------------------- */
+  async getContent(type?: ContentType, force = false): Promise<ContentItem[]> {
+    const cacheKey = `content_${type || 'all'}`;
+    if (force) {
+      this.clearCache(cacheKey);
+    } else {
+      // 0ms instant cache return: if local items are present, return immediately
+      const instant = this.getLocalContent(type);
+      if (instant && instant.length > 0) {
+        // Trigger background refresh silently without blocking caller
+        this.dedupeQuery(cacheKey, async () => {
+          return this.fetchRemoteContent(type);
+        }, 60000).catch(() => {});
+        return instant;
       }
     }
+    return this.dedupeQuery(cacheKey, async () => {
+      return this.fetchRemoteContent(type);
+    }, 60000);
+  }
 
-    let all: ContentItem[] = [];
-    if (typeof window !== 'undefined') {
-      try {
-        const endpoint = type ? `/api/content?type=${encodeURIComponent(type)}` : '/api/content';
-        const res = await fetch(endpoint);
-        if (res.ok) {
-          const json = await res.json();
-          if (json.data && Array.isArray(json.data)) {
-            all = filterValidItems(json.data);
-            if (all.length > 0) {
+  private async fetchRemoteContent(type?: ContentType): Promise<ContentItem[]> {
+      const deletedIds = getLocalDeletedIds();
+      const filterValidItems = (list: ContentItem[]) => {
+        return list
+          .map(c => ({
+            ...c,
+            genres: Array.isArray(c?.genres) ? c.genres : (c?.category ? [c.category] : []),
+          }))
+          .filter(c => {
+          // Exclude logically deleted items
+          if (deletedIds.includes(c.id)) return false;
+          
+          // Exclude dummy items and invalid videos (permanently hide from UI)
+          const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(c.videoId || '');
+          const isBunnyStorage = (c.videoId || '').includes('storage.bunnycdn.com') || (c.videoUrl || '').includes('storage.bunnycdn.com');
+          const isEncrypted = (c.videoId || '').startsWith('enc_v1:') || (c.encryptedVideoId || '').startsWith('enc_v1:');
+          
+          if (c.type === 'series') {
+            if (c.id === 'ser-rang-majha-vegla' || (c.videoId && !isUUID && !isBunnyStorage && !isEncrypted)) return false;
+            return true;
+          }
+
+          // Podcasts & audio tracks are valid with audio/video URL or as published content
+          if (c.type === 'podcast' || c.type === 'audio') {
+            return true;
+          }
+          
+          return isUUID || isBunnyStorage || isEncrypted;
+        });
+      };
+
+      if (this.useLive && db) {
+        try {
+          const contentRef = collection(db, 'content');
+          const q = type 
+            ? query(contentRef, where('type', '==', type)) 
+            : contentRef;
+          const snap = await timeoutPromise(getDocs(q), 3000);
+          if (!snap.empty) {
+            const items = snap.docs.map(d => ({ id: d.id, ...d.data() } as ContentItem));
+            const filtered = filterValidItems(items);
+            if (filtered.length > 0) {
               if (!type) {
-                setLocalStore(STORAGE_KEYS.CONTENT, all);
+                setLocalStore(STORAGE_KEYS.CONTENT, filtered);
               } else {
                 const currentAll = getLocalStore<ContentItem[]>(STORAGE_KEYS.CONTENT, initialContent);
                 const merged = [...currentAll];
-                all.forEach(item => {
+                filtered.forEach(item => {
                   const idx = merged.findIndex(m => m.id === item.id);
                   if (idx >= 0) merged[idx] = item;
                   else merged.unshift(item);
                 });
                 setLocalStore(STORAGE_KEYS.CONTENT, merged);
               }
-              return type ? all.filter(c => c.type === type) : all;
+              return type ? filtered.filter(c => c.type === type) : filtered;
             }
           }
+        } catch (e) {
+          console.warn('Firestore getContent fallback to server API:', e);
         }
-      } catch {}
-    }
+      }
 
-    all = getLocalStore<ContentItem[]>(STORAGE_KEYS.CONTENT, initialContent);
-    const result = filterValidItems(all);
-    return type ? result.filter(c => c.type === type) : result;
-  }
+      let all: ContentItem[] = [];
+      if (typeof window !== 'undefined') {
+        try {
+          const endpoint = type ? `/api/content?type=${encodeURIComponent(type)}` : '/api/content';
+          const res = await fetch(endpoint);
+          if (res.ok) {
+            const json = await res.json();
+            if (json.data && Array.isArray(json.data)) {
+              all = filterValidItems(json.data);
+              if (all.length > 0) {
+                if (!type) {
+                  setLocalStore(STORAGE_KEYS.CONTENT, all);
+                } else {
+                  const currentAll = getLocalStore<ContentItem[]>(STORAGE_KEYS.CONTENT, initialContent);
+                  const merged = [...currentAll];
+                  all.forEach(item => {
+                    const idx = merged.findIndex(m => m.id === item.id);
+                    if (idx >= 0) merged[idx] = item;
+                    else merged.unshift(item);
+                  });
+                  setLocalStore(STORAGE_KEYS.CONTENT, merged);
+                }
+                return type ? all.filter(c => c.type === type) : all;
+              }
+            }
+          }
+        } catch {}
+      }
+
+      all = getLocalStore<ContentItem[]>(STORAGE_KEYS.CONTENT, initialContent);
+      const result = filterValidItems(all);
+      return type ? result.filter(c => c.type === type) : result;
+    }
 
   subscribeToContent(callback: (items: ContentItem[]) => void, type?: ContentType): () => void {
     if (this.useLive && db) {
@@ -309,14 +412,15 @@ export class FirestoreService {
             if (deletedIds.includes(c.id)) return false;
             const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(c.videoId || '');
             const isBunnyStorage = (c.videoId || '').includes('storage.bunnycdn.com') || (c.videoUrl || '').includes('storage.bunnycdn.com');
+            const isEncrypted = (c.videoId || '').startsWith('enc_v1:') || (c.encryptedVideoId || '').startsWith('enc_v1:');
             if (c.type === 'series') {
-              if (c.id === 'ser-rang-majha-vegla' || (c.videoId && !isUUID && !isBunnyStorage)) return false;
+              if (c.id === 'ser-rang-majha-vegla' || (c.videoId && !isUUID && !isBunnyStorage && !isEncrypted)) return false;
               return true;
             }
             if (c.type === 'podcast' || c.type === 'audio') {
               return true;
             }
-            return isUUID || isBunnyStorage;
+            return isUUID || isBunnyStorage || isEncrypted;
           });
           if (!type) {
             setLocalStore(STORAGE_KEYS.CONTENT, filtered);
@@ -361,9 +465,13 @@ export class FirestoreService {
   }
 
   async saveContent(item: ContentItem): Promise<ContentItem> {
+    this.clearCache('content_');
     const now = new Date().toISOString();
     const isPodcast = item.type === 'podcast' || item.type === 'audio';
     const audioTrack = item.audioTrackUrl || item.audioUrl || (isPodcast ? (item.videoUrl || item.videoId || '') : '');
+    const rawVideo = item.videoId || (isPodcast ? audioTrack : '');
+    const encryptedVideo = item.encryptedVideoId || (rawVideo ? encryptVideoUrl(rawVideo) : '');
+
     const toSave: ContentItem = {
       ...item,
       updatedAt: now,
@@ -375,7 +483,9 @@ export class FirestoreService {
       bannerUrl: item.bannerUrl || item.banner || item.poster || (isPodcast ? 'https://images.unsplash.com/photo-1592982537447-7440770cbfc9?w=1200' : ''),
       audioUrl: item.audioUrl || audioTrack,
       audioTrackUrl: item.audioTrackUrl || audioTrack,
-      videoId: item.videoId || (isPodcast ? audioTrack : ''),
+      videoId: rawVideo,
+      encryptedVideoId: encryptedVideo,
+      isEncrypted: !!encryptedVideo,
       videoUrl: item.videoUrl || (isPodcast ? audioTrack : ''),
     };
 
@@ -416,6 +526,7 @@ export class FirestoreService {
   }
 
   async deleteContent(id: string): Promise<void> {
+    this.clearCache('content_');
     addLocalDeletedId(id);
 
     const all = getLocalStore<ContentItem[]>(STORAGE_KEYS.CONTENT, initialContent);
@@ -480,56 +591,60 @@ export class FirestoreService {
   }
 
   /* ------------------- LIVE TV CHANNELS (Section 3 & 6) ------------------- */
-  async getLiveChannels(): Promise<LiveChannel[]> {
-    const deletedIds = getLocalDeletedIds();
-    const filterDeleted = (list: LiveChannel[]) => list.filter(c => !deletedIds.includes(c.id));
+  async getLiveChannels(force = false): Promise<LiveChannel[]> {
+    if (force) this.clearCache('live_channels');
+    return this.dedupeQuery('live_channels', async () => {
+      const deletedIds = getLocalDeletedIds();
+      const filterDeleted = (list: LiveChannel[]) => list.filter(c => !deletedIds.includes(c.id));
 
-    // 1. Fast local cache check
-    const localChannels = getLocalStore<LiveChannel[]>(STORAGE_KEYS.LIVE_CHANNELS, initialLiveChannels);
+      // 1. Fast local cache check
+      const localChannels = getLocalStore<LiveChannel[]>(STORAGE_KEYS.LIVE_CHANNELS, initialLiveChannels);
 
-    // 2. Browser API sync (fast, reliable server route with admin Firestore sync)
-    if (typeof window !== 'undefined') {
-      try {
-        const res = await timeoutPromise(fetch('/api/live'), 1500);
-        if (res.ok) {
-          const json = await res.json();
-          if (json.data && Array.isArray(json.data)) {
-            const filtered = filterDeleted(json.data);
-            setLocalStore(STORAGE_KEYS.LIVE_CHANNELS, filtered);
-            return filtered;
-          }
-        }
-      } catch (e) {
-        // Continue to direct Firestore fallback
-      }
-    }
-
-    // 3. Direct Firestore client fallback
-    if (this.useLive && db) {
-      try {
-        let snap;
+      // 2. Browser API sync (fast, reliable server route with admin Firestore sync)
+      if (typeof window !== 'undefined') {
         try {
-          snap = await timeoutPromise(getDocs(collection(db, 'live_channels')), 2000);
-        } catch {
-          snap = await timeoutPromise(getDocs(collection(db, 'liveChannels')), 2000);
-        }
-        if (snap && !snap.empty) {
-          const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as LiveChannel));
-          const filtered = filterDeleted(list);
-          if (filtered.length > 0) {
-            setLocalStore(STORAGE_KEYS.LIVE_CHANNELS, filtered);
-            return filtered;
+          const res = await timeoutPromise(fetch('/api/live'), 1500);
+          if (res.ok) {
+            const json = await res.json();
+            if (json.data && Array.isArray(json.data)) {
+              const filtered = filterDeleted(json.data);
+              setLocalStore(STORAGE_KEYS.LIVE_CHANNELS, filtered);
+              return filtered;
+            }
           }
+        } catch (e) {
+          // Continue to direct Firestore fallback
         }
-      } catch (e) {
-        console.warn('Firestore getLiveChannels fallback notice:', e);
       }
-    }
 
-    return filterDeleted(localChannels && localChannels.length > 0 ? localChannels : initialLiveChannels);
+      // 3. Direct Firestore client fallback
+      if (this.useLive && db) {
+        try {
+          let snap;
+          try {
+            snap = await timeoutPromise(getDocs(collection(db, 'live_channels')), 2000);
+          } catch {
+            snap = await timeoutPromise(getDocs(collection(db, 'liveChannels')), 2000);
+          }
+          if (snap && !snap.empty) {
+            const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as LiveChannel));
+            const filtered = filterDeleted(list);
+            if (filtered.length > 0) {
+              setLocalStore(STORAGE_KEYS.LIVE_CHANNELS, filtered);
+              return filtered;
+            }
+          }
+        } catch (e) {
+          console.warn('Firestore getLiveChannels fallback notice:', e);
+        }
+      }
+
+      return filterDeleted(localChannels && localChannels.length > 0 ? localChannels : initialLiveChannels);
+    }, 20000);
   }
 
   async saveLiveChannel(channel: LiveChannel): Promise<LiveChannel> {
+    this.clearCache('live_channels');
     const all = getLocalStore<LiveChannel[]>(STORAGE_KEYS.LIVE_CHANNELS, initialLiveChannels);
     const index = all.findIndex(c => c.id === channel.id);
     let updated: LiveChannel[];
@@ -562,6 +677,7 @@ export class FirestoreService {
   }
 
   async deleteLiveChannel(id: string): Promise<void> {
+    this.clearCache('live_channels');
     addLocalDeletedId(id);
 
     const all = getLocalStore<LiveChannel[]>(STORAGE_KEYS.LIVE_CHANNELS, initialLiveChannels);
@@ -584,41 +700,45 @@ export class FirestoreService {
   }
 
   /* ------------------- ADVERTISEMENTS CMS (Section 15 & 6) ------------------- */
-  async getAds(): Promise<Advertisement[]> {
-    const deletedIds = getLocalDeletedIds();
-    const filterDeleted = (list: Advertisement[]) => list.filter(a => !deletedIds.includes(a.id));
+  async getAds(force = false): Promise<Advertisement[]> {
+    if (force) this.clearCache('ads_');
+    return this.dedupeQuery('ads_all', async () => {
+      const deletedIds = getLocalDeletedIds();
+      const filterDeleted = (list: Advertisement[]) => list.filter(a => !deletedIds.includes(a.id));
 
-    if (typeof window !== 'undefined') {
-      try {
-        const res = await timeoutPromise(fetch('/api/ads'), 1500);
-        if (res.ok) {
-          const json = await res.json();
-          if (json.data && Array.isArray(json.data)) {
-            const filtered = filterDeleted(json.data);
+      if (typeof window !== 'undefined') {
+        try {
+          const res = await timeoutPromise(fetch('/api/ads'), 1500);
+          if (res.ok) {
+            const json = await res.json();
+            if (json.data && Array.isArray(json.data)) {
+              const filtered = filterDeleted(json.data);
+              setLocalStore(STORAGE_KEYS.ADS, filtered);
+              return filtered;
+            }
+          }
+        } catch {}
+      }
+
+      if (this.useLive && db) {
+        try {
+          const snap = await timeoutPromise(getDocs(collection(db, 'ads')), 2000);
+          if (!snap.empty) {
+            const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as Advertisement));
+            const filtered = filterDeleted(list);
             setLocalStore(STORAGE_KEYS.ADS, filtered);
             return filtered;
           }
+        } catch (e) {
+          console.warn('Firestore getAds fallback:', e);
         }
-      } catch {}
-    }
-
-    if (this.useLive && db) {
-      try {
-        const snap = await timeoutPromise(getDocs(collection(db, 'ads')), 2000);
-        if (!snap.empty) {
-          const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as Advertisement));
-          const filtered = filterDeleted(list);
-          setLocalStore(STORAGE_KEYS.ADS, filtered);
-          return filtered;
-        }
-      } catch (e) {
-        console.warn('Firestore getAds fallback:', e);
       }
-    }
-    return filterDeleted(getLocalStore<Advertisement[]>(STORAGE_KEYS.ADS, initialAds));
+      return filterDeleted(getLocalStore<Advertisement[]>(STORAGE_KEYS.ADS, initialAds));
+    }, 20000);
   }
 
   async saveAd(ad: Advertisement): Promise<Advertisement> {
+    this.clearCache('ads_');
     const all = getLocalStore<Advertisement[]>(STORAGE_KEYS.ADS, initialAds);
     const index = all.findIndex(a => a.id === ad.id);
     let updated: Advertisement[];
@@ -647,6 +767,7 @@ export class FirestoreService {
   }
 
   async deleteAd(id: string): Promise<void> {
+    this.clearCache('ads_');
     addLocalDeletedId(id);
 
     const all = getLocalStore<Advertisement[]>(STORAGE_KEYS.ADS, initialAds);
@@ -898,14 +1019,24 @@ export class FirestoreService {
   }
 
   /* ------------------- SUBSCRIPTION PLANS ------------------- */
-  async getPlans(): Promise<Plan[]> {
+  async getPlans(force = false): Promise<Plan[]> {
+    if (force) {
+      this.clearCache('plans_');
+    } else {
+      const instant = this.getLocalPlans();
+      if (instant && instant.length > 0) {
+        this.dedupeQuery('plans_all', async () => this.fetchRemotePlans(), 60000).catch(() => {});
+        return instant;
+      }
+    }
+    return this.dedupeQuery('plans_all', async () => this.fetchRemotePlans(), 60000);
+  }
+
+  private async fetchRemotePlans(): Promise<Plan[]> {
     const deletedIds = getLocalDeletedIds();
     const filterDeleted = (list: Plan[]) => list.filter(p => !deletedIds.includes(p.id));
-
-    // 1. Fast local cache check
     const localPlans = filterDeleted(getLocalStore<Plan[]>(STORAGE_KEYS.PLANS, initialPlans));
 
-    // 2. Browser API sync (fast, reliable server route with admin Firestore sync)
     if (typeof window !== 'undefined') {
       try {
         const res = await timeoutPromise(fetch('/api/plans'), 1500);
@@ -917,12 +1048,9 @@ export class FirestoreService {
             return clean;
           }
         }
-      } catch (e) {
-        // Continue to direct Firestore fallback
-      }
+      } catch (e) {}
     }
 
-    // 3. Direct Firestore client fallback
     if (this.useLive && db) {
       try {
         const snap = await timeoutPromise(getDocs(collection(db, 'plans')), 2000);
@@ -939,6 +1067,7 @@ export class FirestoreService {
   }
 
   async savePlan(plan: Plan): Promise<Plan> {
+    this.clearCache('plans_');
     const deletedIds = getLocalDeletedIds();
     if (deletedIds.includes(plan.id)) {
       setLocalStore(STORAGE_KEYS.DELETED_CONTENT, deletedIds.filter(id => id !== plan.id));
@@ -957,22 +1086,33 @@ export class FirestoreService {
 
     // Sync via server API (which writes to Cloud Firestore via Admin privileges)
     if (typeof window !== 'undefined') {
-      fetch('/api/plans', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(plan),
-      }).catch(e => console.warn('Server plan sync notice:', e));
+      try {
+        const res = await fetch('/api/plans', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(plan),
+        });
+        if (!res.ok) console.warn('Server plan sync HTTP error:', res.status);
+      } catch (e) {
+        console.warn('Server plan sync notice:', e);
+      }
     }
 
     if (this.useLive && db) {
       timeoutPromise(setDoc(doc(db, 'plans', plan.id), cleanForFirestore(plan)), 3000)
         .catch(e => console.warn('Background Firestore savePlan notice:', e));
+      timeoutPromise(setDoc(doc(db, 'users', 'app_plans_config'), {
+        plans: updated,
+        updatedAt: new Date().toISOString()
+      }, { merge: true }), 3000)
+        .catch(e => console.warn('Background Firestore app_plans_config notice:', e));
     }
 
     return plan;
   }
 
   async deletePlan(id: string): Promise<void> {
+    this.clearCache('plans_');
     addLocalDeletedId(id);
 
     const all = getLocalStore<Plan[]>(STORAGE_KEYS.PLANS, initialPlans);
@@ -991,7 +1131,20 @@ export class FirestoreService {
   }
 
   /* ------------------- USERS & SUBSCRIPTIONS ------------------- */
-  async getUsers(): Promise<User[]> {
+  async getUsers(force = false): Promise<User[]> {
+    if (force) {
+      this.clearCache('users_');
+    } else {
+      const instant = this.getLocalUsers();
+      if (instant && instant.length > 0) {
+        this.dedupeQuery('users_all', async () => this.fetchRemoteUsers(), 30000).catch(() => {});
+        return instant;
+      }
+    }
+    return this.dedupeQuery('users_all', async () => this.fetchRemoteUsers(), 30000);
+  }
+
+  private async fetchRemoteUsers(): Promise<User[]> {
     const normalizeUser = (u: any): User => {
       let rawPhone = String(u?.phone || u?.mobile || u?.phoneNumber || u?.number || u?.contact || '').trim();
       if (!rawPhone && u?.id) {
@@ -1046,8 +1199,13 @@ export class FirestoreService {
         lastLogout = null;
       }
 
-      const isPlanValid = u?.planExpiry ? new Date(u.planExpiry).getTime() > Date.now() : true;
-      const subStatus: 'active' | 'free' | 'expired' = (u?.subscriptionStatus === 'active' || (isPlanValid && (u?.planId === 'vip-annual' || isCurrentlyActive))) ? 'active' : (u?.subscriptionStatus || 'free');
+      const isPlanExpired = u?.planExpiry ? new Date(u.planExpiry).getTime() <= Date.now() : false;
+      const isSubActive = (u?.subscriptionStatus === 'active' || u?.isSubscribed === true) && !isPlanExpired;
+      const subStatus: 'active' | 'free' | 'expired' = isSubActive
+        ? 'active'
+        : (u?.subscriptionStatus === 'expired' || isPlanExpired)
+        ? 'expired'
+        : 'free';
 
       return {
         ...u,
@@ -1055,7 +1213,9 @@ export class FirestoreService {
         phone: formattedPhone,
         name: name,
         subscriptionStatus: subStatus,
-        planName: u?.planName || (subStatus === 'active' ? 'VIP Annual Pass' : 'Standard Access'),
+        planId: subStatus === 'active' ? (u?.planId || 'vip-annual') : 'free',
+        planName: u?.planName || (subStatus === 'active' ? 'VIP Annual Pass' : (subStatus === 'expired' ? 'प्लॅन संपला (Plan Expired)' : 'विना-सबस्क्रिप्शन (मोफत)')),
+        planExpiry: u?.planExpiry || u?.expiryDate || (subStatus === 'active' ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString() : undefined),
         devices: devices,
         watchlist: Array.isArray(u?.watchlist) ? u.watchlist : [],
         continueWatching: u?.continueWatching && typeof u.continueWatching === 'object' ? u.continueWatching : {},
@@ -1192,6 +1352,7 @@ export class FirestoreService {
   }
 
   async deleteUser(id: string): Promise<void> {
+    this.clearCache('users_');
     const all = await this.getUsers();
     const updated = all.filter(u => u.id !== id);
     setLocalStore(STORAGE_KEYS.USERS, updated);
@@ -1208,6 +1369,7 @@ export class FirestoreService {
   }
 
   async logoutUser(phoneOrId: string): Promise<void> {
+    this.clearCache('users_');
     const digits = phoneOrId.replace(/\D/g, '');
     const cleanPhone = digits.length >= 10 ? digits.slice(-10) : phoneOrId;
     const userId = `user_${cleanPhone}`;
@@ -1338,7 +1500,111 @@ export class FirestoreService {
     setLocalStore(STORAGE_KEYS.USERS, updated);
   }
 
+  async updateUserSubscription(phoneOrId: string, status: 'active' | 'free', details?: { planId?: string; planName?: string; planExpiry?: string; durationDays?: number; name?: string }): Promise<void> {
+    this.clearCache('users_');
+    const digits = phoneOrId.replace(/\D/g, '');
+    const cleanPhone = digits.length >= 10 ? digits.slice(-10) : phoneOrId;
+    const userId = `user_${cleanPhone}`;
+    const nowIso = new Date().toISOString();
+    const isSub = status === 'active';
+    const days = Number(details?.durationDays) || 365;
+    const expiry = isSub ? (details?.planExpiry || new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString()) : null;
+    const planId = isSub ? (details?.planId || (days <= 31 ? 'vip-monthly' : days <= 95 ? 'vip-quarterly' : 'vip-annual')) : 'free';
+    const planName = isSub ? (details?.planName || (days === 28 ? 'VIP Monthly Pass (२८ दिवस)' : days === 84 ? 'VIP Quarterly Pass (८४ दिवस)' : `VIP Pass (${days} दिवस)`)) : 'विना-सबस्क्रिप्शन (मोफत)';
+
+    if (typeof window !== 'undefined') {
+      try {
+        await fetch('/api/users', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: userId,
+            phone: cleanPhone,
+            action: 'update_subscription',
+            subscriptionStatus: status,
+            planId,
+            planName,
+            planExpiry: expiry,
+            durationDays: days,
+            name: details?.name,
+          }),
+        });
+      } catch (e) {
+        console.warn('updateUserSubscription API notice:', e);
+      }
+    }
+
+    if (this.useLive && db) {
+      try {
+        await setDoc(doc(db, 'users', userId), {
+          subscriptionStatus: status,
+          planId,
+          planName,
+          planExpiry: expiry,
+          updatedAt: nowIso,
+        }, { merge: true });
+      } catch (e) {
+        console.warn('updateUserSubscription Firestore notice:', e);
+      }
+    }
+
+    // When activating subscription, also sync to subscriptions collection
+    if (isSub) {
+      const subId = `sub_${cleanPhone || userId}`;
+      const txnId = `ADM_${cleanPhone || userId.slice(-6)}_${Date.now().toString(36).toUpperCase()}`;
+      const subPayload: Subscription = {
+        id: subId,
+        userId: userId,
+        userName: details?.name || 'VIP Member',
+        userPhone: cleanPhone ? `+91 ${cleanPhone}` : phoneOrId,
+        planId: planId,
+        planName: planName,
+        amount: days === 28 ? 149 : days === 84 ? 299 : 2,
+        currency: '₹',
+        startDate: nowIso,
+        endDate: expiry || new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString(),
+        status: 'active',
+        paymentProvider: 'manual',
+        transactionId: txnId,
+      };
+
+      if (typeof window !== 'undefined') {
+        fetch('/api/subscriptions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(subPayload),
+        }).catch(e => console.warn('Record sub notice:', e));
+      }
+
+      if (this.useLive && db) {
+        setDoc(doc(db, 'subscriptions', subId), {
+          ...subPayload,
+          paymentId: txnId,
+          createdAt: nowIso,
+          updatedAt: nowIso,
+        }, { merge: true }).catch(() => {});
+      }
+    }
+
+    const all = getLocalStore<User[]>(STORAGE_KEYS.USERS, []);
+    const updated = all.map(u => {
+      const uDigits = u.phone.replace(/\D/g, '').slice(-10);
+      if ((cleanPhone && uDigits === cleanPhone) || u.id === userId) {
+        return {
+          ...u,
+          subscriptionStatus: status,
+          planId,
+          planName,
+          planExpiry: expiry || undefined,
+        };
+      }
+      return u;
+    });
+    setLocalStore(STORAGE_KEYS.USERS, updated);
+  }
+
   async updateUser(user: User): Promise<User> {
+    this.clearCache('users_');
     const all = getLocalStore<User[]>(STORAGE_KEYS.USERS, []);
     const index = all.findIndex(u => u.id === user.id);
     let updated: User[];
@@ -1366,60 +1632,119 @@ export class FirestoreService {
     return user;
   }
 
-  async getSubscriptions(): Promise<Subscription[]> {
+  async getSubscriptions(force = false): Promise<Subscription[]> {
+    if (force) {
+      this.clearCache('subs_');
+    } else {
+      const instant = this.getLocalSubscriptions();
+      if (instant && instant.length > 0) {
+        this.dedupeQuery('subs_all', async () => this.fetchRemoteSubscriptions(), 30000).catch(() => {});
+        return instant;
+      }
+    }
+    return this.dedupeQuery('subs_all', async () => this.fetchRemoteSubscriptions(), 30000);
+  }
+
+  private async fetchRemoteSubscriptions(): Promise<Subscription[]> {
+    // 1. Try server API /api/subscriptions first
+    if (typeof window !== 'undefined') {
+      try {
+        const res = await timeoutPromise(fetch('/api/subscriptions'), 4000);
+        if (res.ok) {
+          const json = await res.json();
+          if (json.data && Array.isArray(json.data) && json.data.length > 0) {
+            setLocalStore(STORAGE_KEYS.SUBSCRIPTIONS, json.data);
+            return json.data;
+          }
+        }
+      } catch (e) {
+        // Fall through to Firestore
+      }
+    }
+
+    // 2. Direct Firestore fallback
     if (this.useLive && db) {
       try {
-        const snap = await timeoutPromise(getDocs(collection(db, 'subscriptions')), 6000);
+        const snap = await timeoutPromise(getDocs(collection(db, 'subscriptions')), 4000);
         if (!snap.empty) {
-          const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as Subscription));
-          setLocalStore(STORAGE_KEYS.SUBSCRIPTIONS, list);
-          return list;
+          const list = snap.docs
+            .map(d => {
+              const data = d.data();
+              const txnId = data.transactionId || data.paymentId || ('TXN_' + d.id.slice(-8));
+              const provider = data.paymentProvider || (txnId.startsWith('pay_') ? 'razorpay' : 'manual');
+              return {
+                id: d.id,
+                userId: data.userId || d.id,
+                userName: data.userName || data.name || 'User',
+                userPhone: data.userPhone || data.phone || '',
+                planId: data.planId || 'plan_premium_2',
+                planName: data.planName || 'प्रीमियम प्लॅन',
+                amount: Number(data.amount || data.price || 0),
+                currency: data.currency || '₹',
+                startDate: data.startDate || data.createdAt || new Date().toISOString(),
+                endDate: data.endDate || data.planExpiry || new Date().toISOString(),
+                status: data.status || 'active',
+                paymentProvider: provider,
+                transactionId: txnId,
+                ...data,
+              } as Subscription;
+            })
+            .filter(s => s.id !== 'plans_catalog' && (s.userId || s.userPhone || s.userName));
+
+          if (list.length > 0) {
+            setLocalStore(STORAGE_KEYS.SUBSCRIPTIONS, list);
+            return list;
+          }
         }
       } catch (e) {
         // Silently use local store fallback without noisy error
       }
     }
-    return getLocalStore<Subscription[]>(STORAGE_KEYS.SUBSCRIPTIONS, initialSubscriptions);
+    return getLocalStore<Subscription[]>(STORAGE_KEYS.SUBSCRIPTIONS, []);
   }
 
   /* ------------------- HERO BANNERS ------------------- */
-  async getBanners(): Promise<Banner[]> {
-    const deletedIds = getLocalDeletedIds();
-    const filterDeleted = (list: Banner[]) => list.filter(b => !deletedIds.includes(b.id));
+  async getBanners(force = false): Promise<Banner[]> {
+    if (force) this.clearCache('banners_');
+    return this.dedupeQuery('banners_all', async () => {
+      const deletedIds = getLocalDeletedIds();
+      const filterDeleted = (list: Banner[]) => list.filter(b => !deletedIds.includes(b.id));
 
-    if (typeof window !== 'undefined') {
-      try {
-        const res = await timeoutPromise(fetch('/api/banners'), 1500);
-        if (res.ok) {
-          const json = await res.json();
-          if (json.data && Array.isArray(json.data) && json.data.length > 0) {
-            const clean = filterDeleted(json.data);
-            setLocalStore(STORAGE_KEYS.BANNERS, clean);
-            return clean.sort((a, b) => a.order - b.order);
+      if (typeof window !== 'undefined') {
+        try {
+          const res = await timeoutPromise(fetch('/api/banners'), 1500);
+          if (res.ok) {
+            const json = await res.json();
+            if (json.data && Array.isArray(json.data) && json.data.length > 0) {
+              const clean = filterDeleted(json.data);
+              setLocalStore(STORAGE_KEYS.BANNERS, clean);
+              return clean.sort((a, b) => a.order - b.order);
+            }
           }
+        } catch (e) {
+          // fallback
         }
-      } catch (e) {
-        // fallback
       }
-    }
 
-    if (this.useLive && db) {
-      try {
-        const snap = await timeoutPromise(getDocs(collection(db, 'banners')), 2000);
-        if (!snap.empty) {
-          const list = filterDeleted(snap.docs.map(d => ({ id: d.id, ...d.data() } as Banner)));
-          setLocalStore(STORAGE_KEYS.BANNERS, list);
-          return list.sort((a, b) => a.order - b.order);
+      if (this.useLive && db) {
+        try {
+          const snap = await timeoutPromise(getDocs(collection(db, 'banners')), 2000);
+          if (!snap.empty) {
+            const list = filterDeleted(snap.docs.map(d => ({ id: d.id, ...d.data() } as Banner)));
+            setLocalStore(STORAGE_KEYS.BANNERS, list);
+            return list.sort((a, b) => a.order - b.order);
+          }
+        } catch (e) {
+          console.warn('Firestore getBanners fallback:', e);
         }
-      } catch (e) {
-        console.warn('Firestore getBanners fallback:', e);
       }
-    }
-    const all = filterDeleted(getLocalStore<Banner[]>(STORAGE_KEYS.BANNERS, initialBanners));
-    return all.sort((a, b) => a.order - b.order);
+      const all = filterDeleted(getLocalStore<Banner[]>(STORAGE_KEYS.BANNERS, initialBanners));
+      return all.sort((a, b) => a.order - b.order);
+    }, 20000);
   }
 
   async saveBanner(banner: Banner): Promise<Banner> {
+    this.clearCache('banners_');
     const deletedIds = getLocalDeletedIds();
     if (deletedIds.includes(banner.id)) {
       setLocalStore(STORAGE_KEYS.DELETED_CONTENT, deletedIds.filter(id => id !== banner.id));
@@ -1453,6 +1778,7 @@ export class FirestoreService {
   }
 
   async deleteBanner(id: string): Promise<void> {
+    this.clearCache('banners_');
     addLocalDeletedId(id);
 
     const all = getLocalStore<Banner[]>(STORAGE_KEYS.BANNERS, initialBanners);
@@ -1633,11 +1959,13 @@ export class FirestoreService {
   async getGrievances(): Promise<Grievance[]> {
     if (typeof window !== 'undefined') {
       try {
-        const res = await timeoutPromise(fetch('/api/grievances', { cache: 'no-store' }), 3000);
+        const res = await timeoutPromise(fetch('/api/grievances', { cache: 'no-store' }), 5000);
         if (res.ok) {
           const json = await res.json();
-          if (json.success && Array.isArray(json.data) && json.data.length > 0) {
-            setLocalStore(STORAGE_KEYS.GRIEVANCES, json.data);
+          if (json.success && Array.isArray(json.data)) {
+            if (json.data.length > 0) {
+              setLocalStore(STORAGE_KEYS.GRIEVANCES, json.data);
+            }
             return json.data;
           }
         }
@@ -1648,7 +1976,7 @@ export class FirestoreService {
 
     if (this.useLive && db) {
       try {
-        const snap = await timeoutPromise(getDocs(collection(db, 'grievances')), 3000);
+        const snap = await timeoutPromise(getDocs(collection(db, 'grievances')), 4000);
         if (!snap.empty) {
           const remote = snap.docs.map(d => ({ id: d.id, ...d.data() } as Grievance));
           setLocalStore(STORAGE_KEYS.GRIEVANCES, remote);
@@ -1728,42 +2056,69 @@ export class FirestoreService {
 
 
   /* Notifications (Section 23) */
-  async getNotifications(): Promise<NotificationItem[]> {
-    const deletedIds = getLocalDeletedIds();
-    const filterDeleted = (list: NotificationItem[]) => list.filter(n => !deletedIds.includes(n.id) && !n.id.startsWith('notif-demo'));
-
-    if (typeof window !== 'undefined') {
-      try {
-        const res = await timeoutPromise(fetch('/api/notifications', { cache: 'no-store' }), 7000);
-        if (res.ok) {
-          const data = await res.json();
-          if (Array.isArray(data.data)) {
-            const list = filterDeleted(data.data);
-            setLocalStore(STORAGE_KEYS.NOTIFICATIONS, list);
-            return list;
+  async getNotifications(force = false): Promise<NotificationItem[]> {
+    if (force) this.clearCache('notifications_');
+    return this.dedupeQuery('notifications_all', async () => {
+      const deletedIds = getLocalDeletedIds();
+      const filterDeleted = (list: NotificationItem[]) => {
+        const active: NotificationItem[] = [];
+        const expired: NotificationItem[] = [];
+        for (const n of list) {
+          if (deletedIds.includes(n.id) || n.id.startsWith('notif-demo')) continue;
+          if (isNotificationExpired(n)) {
+            expired.push(n);
+          } else {
+            active.push(n);
           }
         }
-      } catch (e) {
-        // Silently use local store without noisy error
-      }
-    }
+        // Background purge of expired notifications
+        if (expired.length > 0) {
+          setTimeout(() => {
+            expired.forEach(item => this.deleteNotification(item.id).catch(() => {}));
+          }, 0);
+        }
+        return active;
+      };
 
-    const rawLocal = getLocalStore<NotificationItem[]>(STORAGE_KEYS.NOTIFICATIONS, initialNotifications);
-    const local = filterDeleted(rawLocal || []);
-    if (!this.useLive || !db) return local;
-
-    try {
-      const snap = await timeoutPromise(getDocs(collection(db, 'notifications')), 2500);
-      if (snap && !snap.empty) {
-        const remote = filterDeleted(snap.docs.map(d => ({ ...d.data(), id: d.id } as NotificationItem)));
-        setLocalStore(STORAGE_KEYS.NOTIFICATIONS, remote);
-        return remote;
+      if (typeof window !== 'undefined') {
+        try {
+          const res = await timeoutPromise(fetch('/api/notifications', { cache: 'no-store' }), 7000);
+          if (res.ok) {
+            const data = await res.json();
+            if (Array.isArray(data.data)) {
+              const list = filterDeleted(data.data);
+              setLocalStore(STORAGE_KEYS.NOTIFICATIONS, list);
+              return list;
+            }
+          }
+        } catch (e) {
+          // Silently use local store without noisy error
+        }
       }
-    } catch {}
-    return local;
+
+      const rawLocal = getLocalStore<NotificationItem[]>(STORAGE_KEYS.NOTIFICATIONS, initialNotifications);
+      const local = filterDeleted(rawLocal || []);
+      if (!this.useLive || !db) return local;
+
+      try {
+        const snap = await timeoutPromise(getDocs(collection(db, 'notifications')), 2500);
+        if (snap && !snap.empty) {
+          const remote = filterDeleted(snap.docs.map(d => ({ ...d.data(), id: d.id } as NotificationItem)));
+          setLocalStore(STORAGE_KEYS.NOTIFICATIONS, remote);
+          return remote;
+        }
+      } catch {}
+      return local;
+    }, 20000);
   }
 
   async sendNotification(item: NotificationItem): Promise<void> {
+    this.clearCache('notifications_');
+    const sentAt = item.sentAt || new Date().toISOString();
+    const createdAt = item.createdAt || sentAt;
+    const expiryType: ExpiryType = item.expiryType || '12pm';
+    const expiresAt = item.expiresAt || calculateNotificationExpiry(sentAt, expiryType);
+
     const cleanItem: NotificationItem = {
       id: item.id,
       title: item.title || '',
@@ -1772,10 +2127,15 @@ export class FirestoreService {
       targetType: item.targetType || 'all',
       targetValue: item.targetValue || '',
       deepLinkUrl: item.deepLinkUrl || '',
-      sentAt: item.sentAt || new Date().toISOString(),
+      sentAt,
+      createdAt,
+      expiresAt,
+      expiryType,
       sentBy: item.sentBy || 'Super Admin',
       status: item.status || 'sent',
       recipientsCount: typeof item.recipientsCount === 'number' ? item.recipientsCount : 1,
+      read: false,
+      isUnread: true,
     };
 
     const list = await this.getNotifications();
@@ -1805,7 +2165,23 @@ export class FirestoreService {
     }
   }
 
+  async markNotificationSeen(id: string): Promise<void> {
+    const list = await this.getNotifications();
+    const updated = list.map(n => n.id === id ? { ...n, read: true, isUnread: false } : n);
+    setLocalStore(STORAGE_KEYS.NOTIFICATIONS, updated);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('ott_notification_seen', { detail: { id } }));
+    }
+    if (this.useLive && db) {
+      try {
+        timeoutPromise(updateDoc(doc(db, 'notifications', id), { read: true, isUnread: false }), 2000)
+          .catch(() => {});
+      } catch {}
+    }
+  }
+
   async deleteNotification(id: string): Promise<void> {
+    this.clearCache('notifications_');
     addLocalDeletedId(id);
     const list = await this.getNotifications();
     setLocalStore(STORAGE_KEYS.NOTIFICATIONS, list.filter(n => n.id !== id));
@@ -1825,6 +2201,7 @@ export class FirestoreService {
   }
 
   async clearAllNotifications(): Promise<void> {
+    this.clearCache('notifications_');
     const list = await this.getNotifications();
     for (const item of list) {
       addLocalDeletedId(item.id);
@@ -1849,7 +2226,20 @@ export class FirestoreService {
   }
 
   /* Dynamic Categories (Section 1 & 6) */
-  async getCategories(): Promise<ContentCategory[]> {
+  async getCategories(force = false): Promise<ContentCategory[]> {
+    if (force) {
+      this.clearCache('categories_');
+    } else {
+      const instant = this.getLocalCategories();
+      if (instant && instant.length > 0) {
+        this.dedupeQuery('categories_all', async () => this.fetchRemoteCategories(), 60000).catch(() => {});
+        return instant;
+      }
+    }
+    return this.dedupeQuery('categories_all', async () => this.fetchRemoteCategories(), 60000);
+  }
+
+  private async fetchRemoteCategories(): Promise<ContentCategory[]> {
     const deletedIds = getLocalDeletedIds();
     const filterDeleted = (list: ContentCategory[]) => list.filter(c => !deletedIds.includes(c.id));
     const local = filterDeleted(getLocalStore<ContentCategory[]>(STORAGE_KEYS.CATEGORIES, initialCategories));
@@ -1871,7 +2261,7 @@ export class FirestoreService {
     if (!this.useLive || !db) return local;
 
     try {
-      const snap = await timeoutPromise(getDocs(collection(db, 'categories')), 2500);
+      const snap = await timeoutPromise(getDocs(collection(db, 'categories')), 2000);
       if (snap && !snap.empty) {
         const remote = filterDeleted(snap.docs.map(d => ({ ...d.data(), id: d.id } as ContentCategory)));
         setLocalStore(STORAGE_KEYS.CATEGORIES, remote);
@@ -1882,6 +2272,7 @@ export class FirestoreService {
   }
 
   async saveCategory(cat: ContentCategory): Promise<void> {
+    this.clearCache('categories_');
     const deletedIds = getLocalDeletedIds();
     if (deletedIds.includes(cat.id)) {
       setLocalStore(STORAGE_KEYS.DELETED_CONTENT, deletedIds.filter(id => id !== cat.id));
@@ -1918,6 +2309,7 @@ export class FirestoreService {
   }
 
   async deleteCategory(id: string): Promise<void> {
+    this.clearCache('categories_');
     addLocalDeletedId(id);
     const list = await this.getCategories();
     setLocalStore(STORAGE_KEYS.CATEGORIES, list.filter(c => c.id !== id));
@@ -1990,29 +2382,3 @@ export class FirestoreService {
 }
 
 export const firestoreService = new FirestoreService();
-
-// Trigger automatic background synchronization of client-side cached data to Cloud Firestore
-if (typeof window !== 'undefined') {
-  setTimeout(() => {
-    try {
-      const deletedIds = getLocalDeletedIds();
-      const content = getLocalStore<ContentItem[]>(STORAGE_KEYS.CONTENT, []).filter(c => !deletedIds.includes(c.id));
-      const seasons = getLocalStore<Season[]>(STORAGE_KEYS.SEASONS, []).filter(s => !deletedIds.includes(s.id));
-      const episodes = getLocalStore<Episode[]>(STORAGE_KEYS.EPISODES, []).filter(e => !deletedIds.includes(e.id));
-      const liveChannels = getLocalStore<LiveChannel[]>(STORAGE_KEYS.LIVE_CHANNELS, []).filter(l => !deletedIds.includes(l.id));
-      const banners = getLocalStore<Banner[]>(STORAGE_KEYS.BANNERS, []).filter(b => !deletedIds.includes(b.id));
-      
-      if (content.length > 0 || seasons.length > 0 || episodes.length > 0 || liveChannels.length > 0) {
-        fetch('/api/sync-all', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content, seasons, episodes, liveChannels, banners, deletedIds })
-        }).then(r => r.json()).then(res => {
-          console.log('Automated Cloud Firestore sync complete:', res);
-        }).catch(err => {
-          console.warn('Auto sync warning:', err);
-        });
-      }
-    } catch {}
-  }, 1200);
-}

@@ -14,7 +14,9 @@ import {
   Heart,
   Play,
   X,
-  Headphones
+  Headphones,
+  Download,
+  Bell
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -23,9 +25,11 @@ import { ConfirmDialog } from '@/components/confirm-dialog';
 import { BunnyUploader } from '@/components/bunny-uploader';
 import { VideoPlayer } from '@/components/video-player';
 import { ConnectAudioModal } from '@/components/connect-audio-modal';
+import { PersonInputWithPhoto } from '@/components/person-input-with-photo';
 import { firestoreService } from '@/lib/firestore-service';
-import { ContentItem } from '@/lib/types';
+import { ContentItem, NotificationItem } from '@/lib/types';
 import { formatDuration, formatViews, slugify } from '@/lib/utils';
+import { calculateNotificationExpiry } from '@/lib/notification-expiry';
 import { useAuth } from '@/lib/auth-context';
 import { useLanguage } from '@/lib/i18n';
 import { getSafeImageUrl, handleImageError, DEFAULT_MOVIE_POSTER } from '@/lib/image-utils';
@@ -33,27 +37,78 @@ import { getSafeImageUrl, handleImageError, DEFAULT_MOVIE_POSTER } from '@/lib/i
 export default function MoviesPage() {
   const { canEdit, canPublish, canDelete } = useAuth();
   const { t, lang } = useLanguage();
-  const [movies, setMovies] = useState<ContentItem[]>([]);
+  const [movies, setMovies] = useState<ContentItem[]>(() => {
+    if (typeof window !== 'undefined') {
+      return firestoreService.getLocalContent('movie');
+    }
+    return [];
+  });
   const [filteredMovies, setFilteredMovies] = useState<ContentItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
   const [previewMovie, setPreviewMovie] = useState<ContentItem | null>(null);
   const [movieForAudio, setMovieForAudio] = useState<ContentItem | null>(null);
+  const [updatingDownloadId, setUpdatingDownloadId] = useState<string | null>(null);
 
   const handleMovieAudioUpdated = (updated: ContentItem) => {
     setMovies(prev => prev.map(m => m.id === updated.id ? updated : m));
+  };
+
+  const handleToggleDownload = async (movie: ContentItem) => {
+    if (!canEdit) return;
+    const newStatus = movie.allowDownload === false ? true : false;
+    setUpdatingDownloadId(movie.id);
+
+    try {
+      const updatedMovie: ContentItem = {
+        ...movie,
+        allowDownload: newStatus,
+        updatedAt: new Date().toISOString(),
+      };
+
+      // Optimistic local state update
+      setMovies(prev => prev.map(m => m.id === movie.id ? updatedMovie : m));
+
+      // Save to server store and Firestore
+      await firestoreService.saveContent(updatedMovie);
+    } catch (err) {
+      console.error('Failed to toggle download status:', err);
+      // Revert if error
+      setMovies(prev => prev.map(m => m.id === movie.id ? movie : m));
+      alert('डाउनलोड परवानगी बदलण्यात त्रुटी आली. कृपया पुन्हा प्रयत्न करा.');
+    } finally {
+      setUpdatingDownloadId(null);
+    }
   };
 
   // Search & Filter
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedGenre, setSelectedGenre] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('all');
+  const [cardAspect, setCardAspect] = useState<'poster' | 'banner'>('banner');
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('ott_admin_movie_aspect');
+      if (saved === 'poster' || saved === 'banner') {
+        setCardAspect(saved);
+      }
+    } catch (_) {}
+  }, []);
+
+  const handleSetCardAspect = (mode: 'poster' | 'banner') => {
+    setCardAspect(mode);
+    try {
+      localStorage.setItem('ott_admin_movie_aspect', mode);
+    } catch (_) {}
+  };
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentMovie, setCurrentMovie] = useState<Partial<ContentItem>>({});
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [notifyUsersOnPublish, setNotifyUsersOnPublish] = useState(false);
 
   // Delete State
   const [movieToDelete, setMovieToDelete] = useState<ContentItem | null>(null);
@@ -76,8 +131,8 @@ export default function MoviesPage() {
     'कलाकारांच्या मुलाखती (Interviews)'
   ];
 
-  const loadMovies = async () => {
-    setLoading(true);
+  const loadMovies = async (silent = true) => {
+    if (!silent) setLoading(true);
     const items = await firestoreService.getContent('movie');
     setMovies(items);
     setLoading(false);
@@ -107,6 +162,7 @@ export default function MoviesPage() {
   }, [movies, searchTerm, selectedGenre, selectedStatus]);
 
   const handleOpenCreate = () => {
+    setNotifyUsersOnPublish(false);
     setCurrentMovie({
       id: 'mov-' + Date.now().toString(36),
       type: 'movie',
@@ -117,7 +173,9 @@ export default function MoviesPage() {
       genres: [genresList[0]],
       cast: [],
       director: '',
+      directorPhoto: '',
       producer: '',
+      producerPhoto: '',
       language: ['मराठी (Marathi)'],
       subtitleLanguages: [],
       subtitleUrl: '',
@@ -129,11 +187,13 @@ export default function MoviesPage() {
       isPremium: false,
       isFeatured: true,
       isTrending: false,
+      allowDownload: true,
       status: 'published',
       rating: 'U/A',
       imdbScore: 0,
       views: 0,
-      duration: 0,
+      duration: 3239,
+      durationMinutes: 54,
       videoStatus: 'ready',
       resolution: '4K UHD HDR',
       videoId: '',
@@ -154,7 +214,15 @@ export default function MoviesPage() {
   }, []);
 
   const handleOpenEdit = (movie: ContentItem) => {
-    setCurrentMovie({ ...movie });
+    setNotifyUsersOnPublish(false);
+    const durSec = movie.duration || 0;
+    const durMin = movie.durationMinutes || (durSec > 0 ? Math.round(durSec / 60) : 54);
+    setCurrentMovie({
+      ...movie,
+      allowDownload: movie.allowDownload !== false,
+      duration: durSec || durMin * 60,
+      durationMinutes: durMin,
+    });
     setCastInput(movie.cast?.join(', ') || '');
     setGenreInput(movie.genres?.join(', ') || '');
     setIsEditing(true);
@@ -172,6 +240,8 @@ export default function MoviesPage() {
     try {
       const castArray = castInput.split(',').map(s => s.trim()).filter(Boolean);
       const genreArray = genreInput.split(',').map(s => s.trim()).filter(Boolean);
+      const durMin = currentMovie.durationMinutes ? Number(currentMovie.durationMinutes) : (currentMovie.duration ? Math.round(currentMovie.duration / 60) : 54);
+      const durSec = currentMovie.duration && currentMovie.duration > 0 ? currentMovie.duration : (durMin * 60);
 
       const movieToSave: ContentItem = {
         id: currentMovie.id || 'mov-' + Date.now().toString(36),
@@ -183,7 +253,9 @@ export default function MoviesPage() {
         genres: genreArray.length ? genreArray : currentMovie.genres || ['Action'],
         cast: castArray.length ? castArray : currentMovie.cast || [],
         director: currentMovie.director || '',
+        directorPhoto: currentMovie.directorPhoto || '',
         producer: currentMovie.producer || '',
+        producerPhoto: currentMovie.producerPhoto || '',
         language: currentMovie.language || ['मराठी (Marathi)'],
         subtitleLanguages: currentMovie.subtitleLanguages || [],
         subtitleUrl: currentMovie.subtitleUrl || '',
@@ -195,11 +267,13 @@ export default function MoviesPage() {
         isPremium: currentMovie.isPremium ?? true,
         isFeatured: !!currentMovie.isFeatured,
         isTrending: !!currentMovie.isTrending,
+        allowDownload: currentMovie.allowDownload !== false,
         status: currentMovie.status || 'published',
         rating: currentMovie.rating || 'U/A',
         imdbScore: Number(currentMovie.imdbScore) || 0,
         views: currentMovie.views || 0,
-        duration: currentMovie.duration || 5400,
+        duration: durSec,
+        durationMinutes: durMin,
         videoId: currentMovie.videoId || '',
         videoStatus: 'ready',
         resolution: currentMovie.resolution || '4K UHD HDR',
@@ -208,6 +282,36 @@ export default function MoviesPage() {
       };
 
       await firestoreService.saveContent(movieToSave);
+
+      // Auto-broadcast "New Movie Uploaded" notification to App & Users
+      if (notifyUsersOnPublish && movieToSave.status === 'published') {
+        try {
+          const sentAt = new Date().toISOString();
+          const autoNotif: NotificationItem = {
+            id: `notif_movie_${movieToSave.id}_${Date.now()}`,
+            title: '🎬 New Movie Uploaded!',
+            message: `New movie uploaded: "${movieToSave.title}" आता ॲपमध्ये पाहण्यासाठी उपलब्ध आहे!`,
+            category: 'new_movie',
+            targetType: 'all',
+            contentId: movieToSave.id,
+            deepLinkUrl: `/ott?id=${movieToSave.id}`,
+            imageUrl: movieToSave.poster || movieToSave.banner,
+            sentAt,
+            createdAt: sentAt,
+            expiresAt: calculateNotificationExpiry(sentAt, '12pm'),
+            expiryType: '12pm',
+            sentBy: 'सिस्टीम (ऑटो ब्रॉडकास्ट)',
+            status: 'sent',
+            recipientsCount: 1,
+            read: false,
+            isUnread: true,
+          };
+          await firestoreService.sendNotification(autoNotif);
+        } catch (notifErr) {
+          console.warn('Auto movie notification notice:', notifErr);
+        }
+      }
+
       setIsModalOpen(false);
       await loadMovies();
     } catch (err) {
@@ -292,27 +396,57 @@ export default function MoviesPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5 self-end">
-          <button
-            onClick={() => setViewMode('grid')}
-            className={`p-2 rounded-full border transition-colors ${
-              viewMode === 'grid'
-                ? 'bg-[#FDF2F8] border-[#FBCFE8] text-[#BE185D]'
-                : 'bg-white border-[#E5DBCA] text-[#7A6F68] hover:text-[#2D2522]'
-            }`}
-          >
-            <LayoutGrid className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => setViewMode('table')}
-            className={`p-2 rounded-full border transition-colors ${
-              viewMode === 'table'
-                ? 'bg-[#FDF2F8] border-[#FBCFE8] text-[#BE185D]'
-                : 'bg-white border-[#E5DBCA] text-[#7A6F68] hover:text-[#2D2522]'
-            }`}
-          >
-            <List className="w-4 h-4" />
-          </button>
+        <div className="flex items-center gap-2.5 self-end flex-wrap">
+          {/* Card Aspect Ratio Mode Toggle */}
+          <div className="flex items-center gap-1 bg-[#FAF7F2] p-1 rounded-full border border-[#E5DBCA]">
+            <button
+              type="button"
+              onClick={() => handleSetCardAspect('poster')}
+              className={`px-3 py-1 rounded-full text-[11px] font-bold transition-all cursor-pointer ${
+                cardAspect === 'poster'
+                  ? 'bg-white text-[#BE123C] shadow-xs'
+                  : 'text-[#7A6F68] hover:text-[#2D2522]'
+              }`}
+              title="2:3 Portrait Poster Mode"
+            >
+              {lang === 'mr' ? 'उभे (2:3)' : lang === 'hi' ? 'खड़ा (2:3)' : 'Portrait (2:3)'}
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSetCardAspect('banner')}
+              className={`px-3 py-1 rounded-full text-[11px] font-bold transition-all cursor-pointer ${
+                cardAspect === 'banner'
+                  ? 'bg-white text-[#BE123C] shadow-xs'
+                  : 'text-[#7A6F68] hover:text-[#2D2522]'
+              }`}
+              title="16:10 Landscape Banner Mode"
+            >
+              {lang === 'mr' ? 'आडवे (16:10 / बॅनर)' : lang === 'hi' ? 'आड़ा (16:10)' : 'Landscape (16:10)'}
+            </button>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => setViewMode('grid')}
+              className={`p-2 rounded-full border transition-colors cursor-pointer ${
+                viewMode === 'grid'
+                  ? 'bg-[#FDF2F8] border-[#FBCFE8] text-[#BE185D]'
+                  : 'bg-white border-[#E5DBCA] text-[#7A6F68] hover:text-[#2D2522]'
+              }`}
+            >
+              <LayoutGrid className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setViewMode('table')}
+              className={`p-2 rounded-full border transition-colors cursor-pointer ${
+                viewMode === 'table'
+                  ? 'bg-[#FDF2F8] border-[#FBCFE8] text-[#BE185D]'
+                  : 'bg-white border-[#E5DBCA] text-[#7A6F68] hover:text-[#2D2522]'
+              }`}
+            >
+              <List className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -324,22 +458,32 @@ export default function MoviesPage() {
               key={movie.id}
               className="group relative rounded-3xl bg-white border border-[#E5DBCA] overflow-hidden hover:border-[#F472B6] hover:shadow-soft-lg transition-all duration-300 flex flex-col shadow-soft"
             >
-              {/* Poster Image */}
-              <div className="relative aspect-[2/3] w-full bg-[#F5EFE6] overflow-hidden">
+              {/* Poster Image Container - Zero Cropping, Full Image Display */}
+              <div className={`relative ${cardAspect === 'banner' ? 'aspect-[16/10]' : 'aspect-[2/3]'} w-full bg-[#181311] overflow-hidden flex items-center justify-center transition-all duration-300`}>
+                {/* 1. Ambient Blurred Backdrop - Matches movie poster colors dynamically */}
+                <img
+                  src={getSafeImageUrl(movie.poster || movie.banner || (movie.videoId ? `/api/bunny/thumbnail?videoId=${movie.videoId}` : ''), DEFAULT_MOVIE_POSTER)}
+                  alt=""
+                  aria-hidden="true"
+                  className="absolute inset-0 w-full h-full object-cover blur-xl scale-125 opacity-60 pointer-events-none"
+                />
+                <div className="absolute inset-0 bg-black/25 pointer-events-none" />
+
+                {/* 2. Full Crisp Poster/Banner Image - 100% Fully Visible (Never Cropped) */}
                 <img
                   src={getSafeImageUrl(movie.poster || movie.banner || (movie.videoId ? `/api/bunny/thumbnail?videoId=${movie.videoId}` : ''), DEFAULT_MOVIE_POSTER)}
                   alt={movie.title}
                   onError={(e) => handleImageError(e, DEFAULT_MOVIE_POSTER)}
-                  className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                  className="relative z-1 max-w-full max-h-full w-auto h-auto object-contain transition-transform duration-300 group-hover:scale-[1.02] drop-shadow-md"
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-[#2D2522]/80 via-transparent to-black/30" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/25 pointer-events-none z-2" />
 
                 {/* Top Badges */}
-                <div className="absolute top-3 left-3 right-3 flex items-center justify-between">
-                  <Badge variant={movie.isPremium ? 'sakura' : 'secondary'} size="sm">
+                <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between z-10 pointer-events-none">
+                  <Badge variant={movie.isPremium ? 'sakura' : 'secondary'} size="sm" className="pointer-events-auto shadow-xs">
                     {movie.isPremium ? t('tierPremium') : t('tierFree')}
                   </Badge>
-                  <Badge variant={movie.status === 'published' ? 'matcha' : 'secondary'} size="sm">
+                  <Badge variant={movie.status === 'published' ? 'matcha' : 'secondary'} size="sm" className="pointer-events-auto shadow-xs">
                     {movie.status === 'published' ? t('statusPublished') : movie.status === 'draft' ? t('statusDraft') : movie.status}
                   </Badge>
                 </div>
@@ -347,20 +491,22 @@ export default function MoviesPage() {
                 {/* Center Play Button on hover */}
                 <button
                   onClick={() => setPreviewMovie(movie)}
-                  className="absolute inset-0 m-auto w-12 h-12 rounded-full bg-[#E11D48] text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all transform group-hover:scale-110 shadow-glow-crimson cursor-pointer z-10"
+                  className="absolute inset-0 m-auto w-12 h-12 rounded-full bg-[#E11D48] text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all transform group-hover:scale-110 shadow-glow-crimson cursor-pointer z-20"
                   title="Test Play Movie"
                 >
                   <Play className="w-5 h-5 fill-white translate-x-0.5" />
                 </button>
 
                 {/* Bottom Overlay Info */}
-                <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between text-xs text-white">
-                  <span className="flex items-center gap-1 font-mono text-[11px] bg-black/60 backdrop-blur-md px-2.5 py-0.5 rounded-full border border-white/20">
+                <div className="absolute bottom-2.5 left-2.5 right-2.5 flex items-center justify-between text-xs text-white z-10 pointer-events-none">
+                  <span className="flex items-center gap-1 font-mono text-[11px] bg-black/75 backdrop-blur-md px-2.5 py-0.5 rounded-full border border-white/20 shadow-xs pointer-events-auto">
                     <Clock className="w-3 h-3 text-[#F472B6]" /> {formatDuration(movie.duration || 0)}
                   </span>
                   {movie.resolution && (
-                    <span className="text-[10px] font-bold bg-[#E11D48] px-2 py-0.5 rounded-full uppercase">
-                      {movie.resolution}
+                    <span className="text-[10px] font-bold bg-[#E11D48] px-2.5 py-0.5 rounded-full uppercase shadow-xs pointer-events-auto">
+                      {movie.resolution.includes(',')
+                        ? (movie.resolution.split(',').find(r => r.toUpperCase().includes('1080') || r.toUpperCase().includes('4K') || r.toUpperCase().includes('720'))?.trim() || movie.resolution.split(',')[0].trim())
+                        : movie.resolution}
                     </span>
                   )}
                 </div>
@@ -381,6 +527,36 @@ export default function MoviesPage() {
                         {g}
                       </span>
                     ))}
+                  </div>
+                </div>
+
+                {/* 1-Click Movie Download Toggle */}
+                <div className="pt-2.5 border-t border-[#E5DBCA]/70">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-bold text-[#7A6F68] flex items-center gap-1.5">
+                      <Download className={`w-3.5 h-3.5 ${movie.allowDownload !== false ? 'text-emerald-600' : 'text-stone-400'}`} />
+                      {lang === 'mr' ? 'चित्रपट डाउनलोड:' : lang === 'hi' ? 'फ़िल्म डाउनलोड:' : 'Movie Download:'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleDownload(movie)}
+                      disabled={updatingDownloadId === movie.id || !canEdit}
+                      className={`px-2.5 py-1 rounded-full text-[11px] font-bold border transition-all flex items-center gap-1.5 cursor-pointer shadow-xs ${
+                        movie.allowDownload !== false
+                          ? 'bg-emerald-50 border-emerald-300 text-emerald-700 hover:bg-emerald-100 hover:border-emerald-400'
+                          : 'bg-rose-50 border-rose-200 text-rose-600 hover:bg-rose-100 hover:border-rose-300'
+                      }`}
+                      title={lang === 'mr' ? 'चित्रपट डाउनलोड चालू/बंद करा' : 'Toggle Movie Download'}
+                    >
+                      <span className={`w-2 h-2 rounded-full ${movie.allowDownload !== false ? 'bg-emerald-500 animate-pulse' : 'bg-rose-400'}`} />
+                      <span>
+                        {updatingDownloadId === movie.id 
+                          ? '...' 
+                          : (movie.allowDownload !== false 
+                              ? (lang === 'mr' ? 'सुरू (ON)' : lang === 'hi' ? 'चालू (ON)' : 'ON') 
+                              : (lang === 'mr' ? 'बंद (OFF)' : lang === 'hi' ? 'बंद (OFF)' : 'OFF'))}
+                      </span>
+                    </button>
                   </div>
                 </div>
 
@@ -432,6 +608,7 @@ export default function MoviesPage() {
                 <th className="pb-3 font-bold">Bunny Video GUID</th>
                 <th className="pb-3 font-bold">Tier</th>
                 <th className="pb-3 font-bold">Status</th>
+                <th className="pb-3 font-bold text-center">Movie Download</th>
                 <th className="pb-3 font-bold text-right">Actions</th>
               </tr>
             </thead>
@@ -472,6 +649,26 @@ export default function MoviesPage() {
                     <Badge variant={movie.status === 'published' ? 'matcha' : 'secondary'} size="sm">
                       {movie.status}
                     </Badge>
+                  </td>
+                  <td className="py-3 text-center">
+                    <button
+                      type="button"
+                      onClick={() => handleToggleDownload(movie)}
+                      disabled={updatingDownloadId === movie.id || !canEdit}
+                      className={`px-2.5 py-1 rounded-full text-xs font-bold border transition-all inline-flex items-center gap-1.5 cursor-pointer shadow-xs ${
+                        movie.allowDownload !== false
+                          ? 'bg-emerald-50 border-emerald-300 text-emerald-700 hover:bg-emerald-100 hover:border-emerald-400'
+                          : 'bg-rose-50 border-rose-200 text-rose-600 hover:bg-rose-100'
+                      }`}
+                      title={lang === 'mr' ? 'चित्रपट डाउनलोड चालू/बंद करा' : 'Toggle Movie Download'}
+                    >
+                      <span className={`w-1.5 h-1.5 rounded-full ${movie.allowDownload !== false ? 'bg-emerald-500' : 'bg-rose-400'}`} />
+                      <span>
+                        {updatingDownloadId === movie.id 
+                          ? '...' 
+                          : (movie.allowDownload !== false ? (lang === 'mr' ? 'चालू' : 'ON') : (lang === 'mr' ? 'बंद' : 'OFF'))}
+                      </span>
+                    </button>
                   </td>
                   <td className="py-3 text-right">
                     <div className="flex items-center justify-end gap-1">
@@ -590,10 +787,13 @@ export default function MoviesPage() {
               currentValue={currentMovie.videoId}
               label={lang === 'mr' ? 'Bunny Stream व्हिडिओ फाईल' : lang === 'hi' ? 'Bunny Stream वीडियो फ़ाइल' : 'Bunny Stream Video File'}
               onUploadComplete={(res) => {
+                const durSec = res.duration || currentMovie.duration || 0;
+                const durMin = durSec > 0 ? Math.round(durSec / 60) : 54;
                 setCurrentMovie({
                   ...currentMovie,
                   videoId: res.urlOrGuid,
-                  duration: res.duration || currentMovie.duration,
+                  duration: durSec,
+                  durationMinutes: durMin,
                   resolution: res.resolution || currentMovie.resolution,
                   videoStatus: 'ready',
                 });
@@ -612,7 +812,27 @@ export default function MoviesPage() {
                   onChange={(e) => {
                     const rawVal = e.target.value.trim();
                     const iframeMatch = rawVal.match(/src=["']([^"']+)["']/i);
-                    setCurrentMovie({ ...currentMovie, videoId: iframeMatch ? iframeMatch[1] : e.target.value });
+                    const finalVal = iframeMatch ? iframeMatch[1] : e.target.value;
+                    setCurrentMovie({ ...currentMovie, videoId: finalVal });
+                  }}
+                  onBlur={(e) => {
+                    const val = e.target.value;
+                    const guidMatch = val.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+                    if (guidMatch) {
+                      fetch(`/api/bunny/videos?guid=${guidMatch[0]}`)
+                        .then(r => r.json())
+                        .then(json => {
+                          if (json.success && json.data && json.data.length > 0) {
+                            const lengthSec = json.data.length;
+                            const mins = Math.round(lengthSec / 60);
+                            setCurrentMovie(prev => ({
+                              ...prev,
+                              duration: lengthSec,
+                              durationMinutes: mins,
+                            }));
+                          }
+                        }).catch(() => {});
+                    }
                   }}
                   placeholder="e.g. 737060-guid, https://iframe.mediadelivery.net/embed/..., or .m3u8/.mp4"
                   className="flex-1 bg-white border border-[#E5DBCA] rounded-2xl px-4 py-2 text-xs font-mono text-[#2D2522] focus:outline-none focus:border-[#F472B6]"
@@ -625,6 +845,22 @@ export default function MoviesPage() {
                     if (!currentMovie.videoId && !currentMovie.title) {
                       alert('कृपया आधी Video ID किंवा Title प्रविष्ट करा.');
                       return;
+                    }
+                    const guidMatch = (currentMovie.videoId || '').match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+                    if (guidMatch) {
+                      fetch(`/api/bunny/videos?guid=${guidMatch[0]}`)
+                        .then(r => r.json())
+                        .then(json => {
+                          if (json.success && json.data && json.data.length > 0) {
+                            const lengthSec = json.data.length;
+                            const mins = Math.round(lengthSec / 60);
+                            setCurrentMovie(prev => ({
+                              ...prev,
+                              duration: lengthSec,
+                              durationMinutes: mins,
+                            }));
+                          }
+                        }).catch(() => {});
                     }
                     setPreviewMovie({
                       ...currentMovie,
@@ -646,33 +882,27 @@ export default function MoviesPage() {
             </div>
           </div>
 
-          {/* Director & Producer */}
+          {/* Director & Producer with In-Box Photo Upload */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs font-bold uppercase tracking-wider text-[#7A6F68] block mb-1.5">
-                {lang === 'mr' ? 'दिग्दर्शक *' : lang === 'hi' ? 'निर्देशक *' : 'Director *'}
-              </label>
-              <input
-                type="text"
-                value={currentMovie.director || ''}
-                onChange={(e) => setCurrentMovie({ ...currentMovie, director: e.target.value })}
-                placeholder={lang === 'mr' ? 'उदा. नागराज मंजुळे / प्रवीण तरडे' : lang === 'hi' ? 'उदा. नागराज मंजुले' : 'e.g. Christopher Nolan'}
-                className="w-full bg-[#FAF7F2] border border-[#E5DBCA] rounded-2xl px-4 py-2.5 text-sm text-[#2D2522] focus:outline-none focus:border-[#F472B6] focus:bg-white"
-              />
-            </div>
+            <PersonInputWithPhoto
+              label={lang === 'mr' ? 'दिग्दर्शक *' : lang === 'hi' ? 'निर्देशक *' : 'Director *'}
+              name={currentMovie.director || ''}
+              photoUrl={currentMovie.directorPhoto}
+              onNameChange={(val) => setCurrentMovie({ ...currentMovie, director: val })}
+              onPhotoChange={(val) => setCurrentMovie({ ...currentMovie, directorPhoto: val })}
+              placeholder={lang === 'mr' ? 'उदा. नागराज मंजुळे / प्रवीण तरडे' : lang === 'hi' ? 'उदा. नागराज मंजुले' : 'e.g. Christopher Nolan'}
+              tooltipText={lang === 'mr' ? 'दिग्दर्शकाचा फोटो जोडा' : 'Upload Director Photo'}
+            />
 
-            <div>
-              <label className="text-xs font-bold uppercase tracking-wider text-[#7A6F68] block mb-1.5">
-                {lang === 'mr' ? 'निर्माता' : lang === 'hi' ? 'निर्माता' : 'Producer'}
-              </label>
-              <input
-                type="text"
-                value={currentMovie.producer || ''}
-                onChange={(e) => setCurrentMovie({ ...currentMovie, producer: e.target.value })}
-                placeholder={lang === 'mr' ? 'उदा. ग्रामीण भारत टीव्ही प्रॉडक्शन' : lang === 'hi' ? 'उदा. ग्रामीण भारत टीवी प्रोडक्शन' : 'e.g. Gramin Bharat TV Productions'}
-                className="w-full bg-[#FAF7F2] border border-[#E5DBCA] rounded-2xl px-4 py-2.5 text-sm text-[#2D2522] focus:outline-none focus:border-[#F472B6] focus:bg-white"
-              />
-            </div>
+            <PersonInputWithPhoto
+              label={lang === 'mr' ? 'निर्माता' : lang === 'hi' ? 'निर्माता' : 'Producer'}
+              name={currentMovie.producer || ''}
+              photoUrl={currentMovie.producerPhoto}
+              onNameChange={(val) => setCurrentMovie({ ...currentMovie, producer: val })}
+              onPhotoChange={(val) => setCurrentMovie({ ...currentMovie, producerPhoto: val })}
+              placeholder={lang === 'mr' ? 'उदा. ग्रामीण भारत टीव्ही प्रॉडक्शन' : lang === 'hi' ? 'उदा. ग्रामीण भारत टीवी प्रोडक्शन' : 'e.g. Gramin Bharat TV Productions'}
+              tooltipText={lang === 'mr' ? 'निर्मात्याचा फोटो जोडा' : 'Upload Producer Photo'}
+            />
           </div>
 
           {/* Official Trailer URL */}
@@ -769,8 +999,8 @@ export default function MoviesPage() {
             />
           </div>
 
-          {/* Dates & Rating */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Dates, Duration & Rating */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
             <div>
               <label className="text-xs font-bold uppercase tracking-wider text-[#7A6F68] block mb-1.5">
                 {lang === 'mr' ? 'प्रदर्शित तारीख' : lang === 'hi' ? 'रिलीज़ तिथि' : 'Release Date'}
@@ -781,6 +1011,36 @@ export default function MoviesPage() {
                 onChange={(e) => setCurrentMovie({ ...currentMovie, releaseDate: e.target.value })}
                 className="w-full bg-[#FAF7F2] border border-[#E5DBCA] rounded-2xl px-4 py-2.5 text-sm text-[#2D2522] focus:outline-none focus:border-[#F472B6] focus:bg-white"
               />
+            </div>
+
+            <div>
+              <label className="text-xs font-bold uppercase tracking-wider text-[#7A6F68] block mb-1.5 flex items-center justify-between">
+                <span>{lang === 'mr' ? 'कालावधी (मिनिटे)' : lang === 'hi' ? 'अवधि (मिनट)' : 'Duration (Minutes)'}</span>
+                <span className="text-[10px] text-[#E11D48] font-bold">
+                  {formatDuration((currentMovie.durationMinutes ? currentMovie.durationMinutes * 60 : currentMovie.duration) || 0)}
+                </span>
+              </label>
+              <div className="relative">
+                <input
+                  type="number"
+                  min="1"
+                  max="600"
+                  value={currentMovie.durationMinutes || (currentMovie.duration ? Math.round(currentMovie.duration / 60) : '')}
+                  onChange={(e) => {
+                    const mins = parseInt(e.target.value, 10) || 0;
+                    setCurrentMovie({
+                      ...currentMovie,
+                      durationMinutes: mins,
+                      duration: mins * 60,
+                    });
+                  }}
+                  placeholder="उदा. 54"
+                  className="w-full bg-[#FAF7F2] border border-[#E5DBCA] rounded-2xl px-4 py-2.5 text-sm font-bold text-[#2D2522] focus:outline-none focus:border-[#F472B6] focus:bg-white"
+                />
+                <span className="absolute right-3 top-2.5 text-xs text-[#7A6F68] font-medium pointer-events-none">
+                  min
+                </span>
+              </div>
             </div>
 
             <div>
@@ -875,6 +1135,66 @@ export default function MoviesPage() {
                 <option value="archived">{lang === 'mr' ? 'संग्रहित' : lang === 'hi' ? 'अभिलेखागार' : 'Archived'}</option>
               </select>
             </div>
+
+            {/* Movie Download Permission Toggle */}
+            <label className="flex items-center gap-3 cursor-pointer p-3 rounded-2xl bg-white border border-[#E5DBCA] hover:border-emerald-400 transition-colors col-span-1 sm:col-span-2 md:col-span-4 shadow-2xs">
+              <input
+                type="checkbox"
+                checked={currentMovie.allowDownload !== false}
+                onChange={(e) => setCurrentMovie({ ...currentMovie, allowDownload: e.target.checked })}
+                className="w-5 h-5 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+              />
+              <div className="flex-1 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <span className="text-sm font-bold text-[#2D2522] flex items-center gap-1.5">
+                    <Download className={`w-4 h-4 ${currentMovie.allowDownload !== false ? 'text-emerald-600' : 'text-stone-400'}`} />
+                    {lang === 'mr' ? 'चित्रपट डाउनलोड परवानगी' : lang === 'hi' ? 'फ़िल्म डाउनलोड अनुमति' : 'Allow Movie Download'}
+                  </span>
+                  <span className="text-xs text-[#7A6F68] block mt-0.5">
+                    {currentMovie.allowDownload !== false
+                      ? (lang === 'mr' ? 'चालू: वापरकर्ते हा चित्रपट अ‍ॅपमध्ये डाऊनलोड करू शकतात.' : 'Enabled: Users can download this movie in the mobile app.')
+                      : (lang === 'mr' ? 'बंद: अ‍ॅपमध्ये हा चित्रपट डाऊनलोड करता येणार नाही (डाऊनलोड बटण दिसणार नाही).' : 'Disabled: Movie cannot be downloaded in app (download button hidden).')}
+                  </span>
+                </div>
+                <span className={`px-2.5 py-0.5 rounded-full text-xs font-black uppercase tracking-wider shrink-0 ${
+                  currentMovie.allowDownload !== false
+                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                    : 'bg-rose-100 text-rose-800 border border-rose-300'
+                }`}>
+                  {currentMovie.allowDownload !== false ? (lang === 'mr' ? 'चालू (ON)' : 'ON') : (lang === 'mr' ? 'बंद (OFF)' : 'OFF')}
+                </span>
+              </div>
+            </label>
+
+            {/* Broadcast App Notification Toggle */}
+            <label className="flex items-center gap-3 cursor-pointer p-3.5 rounded-2xl bg-[#FFFBEB] border border-[#FDE68A] hover:border-amber-400 transition-colors col-span-1 sm:col-span-2 md:col-span-4 shadow-2xs">
+              <input
+                type="checkbox"
+                checked={notifyUsersOnPublish}
+                onChange={(e) => setNotifyUsersOnPublish(e.target.checked)}
+                className="w-5 h-5 rounded text-amber-600 focus:ring-amber-500 cursor-pointer"
+              />
+              <div className="flex-1 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <span className="text-sm font-bold text-[#92400E] flex items-center gap-1.5">
+                    <Bell className="w-4 h-4 text-amber-600" />
+                    {lang === 'mr' ? 'ॲपमध्ये "New Movie Uploaded" नोटिफिकेशन पाठवा' : 'Send "New Movie Uploaded" App Notification'}
+                  </span>
+                  <span className="text-xs text-[#B45309] block mt-0.5">
+                    {lang === 'mr'
+                      ? 'हा चित्रपट सेव्ह होताच सर्व मोबाइल ॲप वापरकर्त्यांना "New movie uploaded" मेसेज आपोआप पोहोचेल.'
+                      : 'Automatically broadcast a "New movie uploaded" message notification to mobile app users upon save.'}
+                  </span>
+                </div>
+                <span className={`px-2.5 py-0.5 rounded-full text-xs font-black uppercase tracking-wider shrink-0 ${
+                  notifyUsersOnPublish
+                    ? 'bg-amber-100 text-amber-900 border border-amber-300 font-bold'
+                    : 'bg-stone-100 text-stone-600 border border-stone-300 font-bold'
+                }`}>
+                  {notifyUsersOnPublish ? '🔔 चालू (ON)' : 'बंद (OFF)'}
+                </span>
+              </div>
+            </label>
           </div>
 
           {/* Modal Actions */}

@@ -67,8 +67,26 @@ export function VideoPlayer({
 
   // Resolve Bunny Stream, Mediadelivery Embed, HLS or MP4 source
   const playbackInfo = bunnyService.resolvePlaybackUrls(src);
+  const [signedStreamUrl, setSignedStreamUrl] = useState<string>('');
+
+  useEffect(() => {
+    let active = true;
+    if (src) {
+      // Secure token retrieval for leak-proof streaming
+      fetch(`/api/bunny/token?videoGuid=${encodeURIComponent(src)}`)
+        .then(res => res.json())
+        .then(data => {
+          if (active && data.success && data.playbackUrl) {
+            setSignedStreamUrl(data.playbackUrl);
+          }
+        })
+        .catch(err => console.warn('Signed token resolution notice:', err));
+    }
+    return () => { active = false; };
+  }, [src]);
+
   const isUsingEmbed = playbackInfo.isEmbed && !audioSrc && !forceNativePlayer;
-  const finalSource = (playbackInfo as any).proxyUrl || playbackInfo.hlsUrl || playbackInfo.directUrl || (
+  const finalSource = signedStreamUrl || (playbackInfo as any).proxyUrl || playbackInfo.hlsUrl || playbackInfo.directUrl || (
     isLive 
       ? 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8' 
       : 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4'

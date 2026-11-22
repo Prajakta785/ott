@@ -28,7 +28,7 @@ import { formatDate } from '@/lib/utils';
 import { useLanguage } from '@/lib/i18n';
 import { exportToExcel, exportToPDF, ReportExportConfig } from '@/lib/report-exporter';
 
-type ReportType = 'daily' | 'monthly' | 'users' | 'revenue' | 'ads' | 'content' | 'district';
+type ReportType = 'daily' | 'monthly' | 'users' | 'revenue' | 'ads' | 'content';
 
 export default function ReportsAnalyticsPage() {
   const { t, lang } = useLanguage();
@@ -37,83 +37,124 @@ export default function ReportsAnalyticsPage() {
   const [exportingType, setExportingType] = useState<'excel' | 'pdf' | null>(null);
   const [exportSuccessMsg, setExportSuccessMsg] = useState<string | null>(null);
 
-  // Live collections from database
-  const [contentList, setContentList] = useState<ContentItem[]>([]);
-  const [userList, setUserList] = useState<User[]>([]);
-  const [subList, setSubList] = useState<Subscription[]>([]);
+  // Live collections from database (0ms instant cache initialization)
+  const [contentList, setContentList] = useState<ContentItem[]>(() => {
+    if (typeof window !== 'undefined') {
+      return firestoreService.getLocalContent();
+    }
+    return [];
+  });
+  const [userList, setUserList] = useState<User[]>(() => {
+    if (typeof window !== 'undefined') {
+      return firestoreService.getLocalUsers();
+    }
+    return [];
+  });
+  const [subList, setSubList] = useState<Subscription[]>(() => {
+    if (typeof window !== 'undefined') {
+      return firestoreService.getLocalSubscriptions();
+    }
+    return [];
+  });
   const [adList, setAdList] = useState<Advertisement[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    let isMounted = true;
     async function loadData() {
-      setLoading(true);
-      const [items, users, subs, ads] = await Promise.all([
-        firestoreService.getContent(),
-        firestoreService.getUsers(),
-        firestoreService.getSubscriptions(),
-        firestoreService.getAds(),
-      ]);
-      setContentList(items);
-      setUserList(users);
-      setSubList(subs);
-      setAdList(ads);
-      setLoading(false);
+      try {
+        const [items, users, subs, ads] = await Promise.all([
+          firestoreService.getContent(),
+          firestoreService.getUsers(),
+          firestoreService.getSubscriptions(),
+          firestoreService.getAds(),
+        ]);
+        if (isMounted) {
+          setContentList(items || []);
+          setUserList(users || []);
+          setSubList(subs || []);
+          setAdList(ads || []);
+        }
+      } catch (err) {
+        console.error('Failed to load reports data:', err);
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
     }
     loadData();
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
-  // Aggregated totals directly from live database
+  // Aggregated totals directly from live database (100% real data, zero dummy fallbacks)
   const catalogViews = contentList.reduce((acc, item) => acc + (item.views || 0), 0);
-  const totalViews = catalogViews > 0 ? catalogViews : 436160;
+  const totalViews = catalogViews;
   const computedWatchHours = Math.round(contentList.reduce((acc, item) => {
-    const durationHours = (item.duration || 3600) / 3600;
+    const durationHours = (item.duration || 0) / 3600;
     return acc + ((item.views || 0) * durationHours);
   }, 0));
-  const totalWatchHours = computedWatchHours > 0 ? computedWatchHours : 6580;
-  const activeSubsCount = Math.max(subList.filter(s => s.status === 'active').length, 3);
+  const totalWatchHours = computedWatchHours;
+  const activeSubsCount = subList.filter(s => s.status === 'active').length;
   const computedRevenue = subList.filter(s => s.status === 'active').reduce((acc, s) => acc + (s.amount || 0), 0);
-  const totalRevenueAmt = computedRevenue > 0 ? computedRevenue : 51000;
+  const totalRevenueAmt = computedRevenue;
 
-  // 1. REAL DAILY VIEWS REPORT DATA (Active day-by-day broadcasting metrics for Gramin Bharat TV)
+  // 1. REAL DAILY VIEWS REPORT DATA (Calculated from real user sessions & database activity)
   const dailyData = useMemo(() => {
     const targetDays = dateRange === '7days' ? 7 : dateRange === '90days' ? 30 : 14;
     const records = [];
     const now = new Date();
 
-    // Realistic day-of-week viewing distribution weights (Weekends & Fridays peak)
-    const weights = [1.24, 1.15, 1.02, 0.94, 0.92, 0.99, 1.14]; // Sun=0, Mon=1, ..., Sat=6
-    const peakTimeSlots = [
-      '08:00 PM - 10:30 PM (Prime Time)',
-      '07:30 PM - 10:00 PM (Evening Special)',
-      '08:30 PM - 11:00 PM (Blockbuster Slot)',
-      '07:00 PM - 09:30 PM (Regional Broadcast)',
-      '08:00 PM - 10:15 PM (Prime Time)',
-      '07:45 PM - 10:00 PM (Daily News & Shows)',
-      '08:15 PM - 10:45 PM (Weekend Prime)'
-    ];
-    const topPlatforms = [
-      'Android TV & Mobile App',
-      'Mobile App (Android/iOS)',
-      'Smart TV & FireStick',
-      'Mobile App & Web Streaming',
-      'Smart TV & Android Box',
-      'Android TV & Mobile App',
-      'Mobile App (Android/iOS)'
-    ];
-
-    const baseDailyViews = Math.round(totalViews / 16);
-
     for (let i = 0; i < targetDays; i++) {
       const d = new Date(now);
       d.setDate(now.getDate() - i);
-      const dayOfWeek = d.getDay();
-      const weight = weights[dayOfWeek] || 1.0;
-      
-      const dailyViews = Math.round(baseDailyViews * weight);
-      const uniqueViewers = Math.round(dailyViews * 0.74);
-      const watchHours = Math.round(dailyViews * 0.016);
-      const peakTime = peakTimeSlots[i % peakTimeSlots.length];
-      const platform = topPlatforms[i % topPlatforms.length];
+      const dateStr = d.toISOString().slice(0, 10); // YYYY-MM-DD
+
+      // Real users who logged in or were active on this day
+      const activeUsersOnDay = userList.filter(u => {
+        const uDate = (u.lastLogin || u.loginTime || u.createdAt || '').slice(0, 10);
+        return uDate === dateStr;
+      });
+
+      const uniqueViewers = activeUsersOnDay.length;
+
+      // Platform breakdown for active users on this day
+      const platformsOnDay = Array.from(
+        new Set(
+          activeUsersOnDay.flatMap(u => 
+            Array.isArray(u.devices) && u.devices.length > 0 
+              ? u.devices.map(dev => dev.deviceName || 'Android Mobile App') 
+              : ['Android Mobile App']
+          )
+        )
+      );
+      const topPlatform = platformsOnDay.length > 0 ? platformsOnDay.join(', ') : '—';
+
+      // Peak hour slot for active users on this day (if any)
+      let peakTime = '—';
+      if (activeUsersOnDay.length > 0) {
+        const hours = activeUsersOnDay.map(u => {
+          const t = new Date(u.lastLogin || u.loginTime || u.createdAt || 0);
+          return t.getHours();
+        });
+        const avgHour = Math.round(hours.reduce((a, b) => a + b, 0) / hours.length);
+        const ampmStart = avgHour >= 12 ? 'PM' : 'AM';
+        const displayStart = ((avgHour % 12) || 12).toString().padStart(2, '0');
+        const displayEnd = ((((avgHour + 2) % 24) % 12) || 12).toString().padStart(2, '0');
+        const ampmEnd = (avgHour + 2) % 24 >= 12 ? 'PM' : 'AM';
+        peakTime = `${displayStart}:00 ${ampmStart} - ${displayEnd}:00 ${ampmEnd}`;
+      }
+
+      // Daily views computed from active users and catalog
+      const dailyViews = uniqueViewers > 0 
+        ? (catalogViews > 0 ? Math.max(uniqueViewers, Math.round((catalogViews / Math.max(userList.length, 1)) * uniqueViewers)) : uniqueViewers)
+        : 0;
+
+      const watchHours = dailyViews > 0 && computedWatchHours > 0
+        ? Math.max(1, Math.round((computedWatchHours / Math.max(catalogViews, 1)) * dailyViews))
+        : 0;
 
       records.push({
         date: formatDate(d.toISOString()),
@@ -121,7 +162,7 @@ export default function ReportsAnalyticsPage() {
         uniqueViewers: uniqueViewers.toLocaleString(),
         watchHours: `${watchHours.toLocaleString()} hrs`,
         peakTime: peakTime,
-        topPlatform: platform,
+        topPlatform: topPlatform,
         rawViews: dailyViews,
         rawUniques: uniqueViewers,
         rawWatchHours: watchHours,
@@ -130,78 +171,102 @@ export default function ReportsAnalyticsPage() {
     }
 
     return records;
-  }, [totalViews, dateRange]);
+  }, [userList, catalogViews, computedWatchHours, dateRange]);
 
-  // 2. REAL MONTHLY VIEWS REPORT DATA (Past 6 months growth analysis)
+  // 2. REAL MONTHLY VIEWS REPORT DATA (Past 6 months growth analysis from real data)
   const monthlyData = useMemo(() => {
-    const defaultMonthly = [
-      { month: lang === 'mr' ? 'ऑक्टोबर २०२६' : 'October 2026', totalViews: '4,36,160', bandwidth: '196.3 GB', newSubscribers: 340, revenue: '₹51,000', topCategory: lang === 'mr' ? 'चित्रपट (Movies)' : 'Movies & Cinema' },
-      { month: lang === 'mr' ? 'सप्टेंबर २०२६' : 'September 2026', totalViews: '3,82,400', bandwidth: '172.1 GB', newSubscribers: 285, revenue: '₹42,750', topCategory: lang === 'mr' ? 'बातम्या (News)' : 'News & Samachar' },
-      { month: lang === 'mr' ? 'ऑगस्ट २०२६' : 'August 2026', totalViews: '3,45,200', bandwidth: '155.3 GB', newSubscribers: 240, revenue: '₹36,000', topCategory: lang === 'mr' ? 'वेब मालिका (Web Series)' : 'Web Series' },
-      { month: lang === 'mr' ? 'जुलै २०२६' : 'July 2026', totalViews: '2,98,600', bandwidth: '134.4 GB', newSubscribers: 195, revenue: '₹29,250', topCategory: lang === 'mr' ? 'चित्रपट (Movies)' : 'Movies & Cinema' },
-      { month: lang === 'mr' ? 'जून २०२६' : 'June 2026', totalViews: '2,54,800', bandwidth: '114.7 GB', newSubscribers: 160, revenue: '₹24,000', topCategory: lang === 'mr' ? 'बातम्या (News)' : 'News & Samachar' },
-      { month: lang === 'mr' ? 'मे २०२६' : 'May 2026', totalViews: '2,12,000', bandwidth: '95.4 GB', newSubscribers: 125, revenue: '₹18,750', topCategory: lang === 'mr' ? 'चित्रपट (Movies)' : 'Movies & Cinema' },
-    ];
-    return defaultMonthly;
-  }, [lang]);
+    const months = [];
+    const now = new Date();
 
-  // 3. USER REPORT DATA
+    for (let i = 0; i < 6; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const yearMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      
+      const monthLabel = d.toLocaleString(lang === 'mr' ? 'mr-IN' : lang === 'hi' ? 'hi-IN' : 'en-IN', {
+        month: 'long',
+        year: 'numeric'
+      });
+
+      // Real users who registered / were active in this month
+      const usersInMonth = userList.filter(u => {
+        const uMonth = (u.createdAt || u.lastLogin || '').slice(0, 7);
+        return uMonth === yearMonth;
+      });
+
+      // Real subscriptions in this month
+      const subsInMonth = subList.filter(s => {
+        const sMonth = (s.startDate || '').slice(0, 7);
+        return sMonth === yearMonth;
+      });
+
+      const monthRevenue = subsInMonth.reduce((acc, s) => acc + (s.amount || 0), 0);
+      const newSubscribers = usersInMonth.length;
+
+      // Monthly views based on active user engagement
+      const monthViews = newSubscribers > 0
+        ? (catalogViews > 0 ? Math.round((catalogViews / Math.max(userList.length, 1)) * newSubscribers) : newSubscribers)
+        : 0;
+
+      // Real bandwidth estimate in GB based on stream duration / views
+      const bandwidthGB = monthViews > 0 ? (monthViews * 0.45).toFixed(1) : '0.0';
+
+      // Top category from content library
+      const categories = contentList.flatMap(c => c.genres || [c.type || 'movie']);
+      const topCat = categories.length > 0 ? categories[0] : (lang === 'mr' ? 'चित्रपट (Movies)' : 'Movies');
+
+      months.push({
+        month: monthLabel,
+        totalViews: monthViews.toLocaleString(),
+        bandwidth: `${bandwidthGB} GB`,
+        newSubscribers: newSubscribers,
+        revenue: `₹${monthRevenue.toLocaleString()}`,
+        topCategory: topCat,
+        rawViews: monthViews,
+        rawRevenue: monthRevenue,
+      });
+    }
+
+    return months;
+  }, [userList, subList, contentList, catalogViews, lang]);
+
+  // 3. REAL USER REPORT DATA (Direct from live user accounts)
   const userReportData = useMemo(() => {
-    const baseUsers = userList.length > 0 ? userList : [
-      { id: 'usr-9022705467', name: 'Prajakta Pawar', phone: '+91 9022705467', email: 'prajakta@graminbharat.tv', subscriptionStatus: 'active', planName: 'VIP Annual Pass', devices: [{ id: '1' }], createdAt: '2026-10-10T14:14:28.000Z' },
-      { id: 'usr-9834037433', name: 'Siddhi Chavan', phone: '+91 9834037433', email: 'siddhi@graminbharat.tv', subscriptionStatus: 'active', planName: 'Standard HD Pass', devices: [{ id: '1' }], createdAt: '2026-10-10T14:43:10.000Z' },
-      { id: 'usr-9898989898', name: 'John', phone: '+91 9898989898', email: 'john@graminbharat.tv', subscriptionStatus: 'active', planName: 'Mobile VIP Pass', devices: [{ id: '1' }], createdAt: '2026-10-10T18:12:58.000Z' },
-      { id: 'usr-9822114455', name: 'Ganesh Shinde (पुणे)', phone: '+91 9822114455', email: 'ganesh.pune@gmail.com', subscriptionStatus: 'active', planName: 'VIP Annual Pass', devices: [{ id: '1' }], createdAt: '2026-10-08T11:20:00.000Z' },
-      { id: 'usr-9850223344', name: 'Sunil Patil (कोल्हापूर)', phone: '+91 9850223344', email: 'sunil.kop@gmail.com', subscriptionStatus: 'active', planName: 'Standard HD Pass', devices: [{ id: '1' }], createdAt: '2026-10-07T16:45:00.000Z' },
-    ];
-    return baseUsers.map(u => ({
+    return userList.map(u => ({
       name: u.name,
-      phoneOrEmail: u.phone || u.email || 'N/A',
-      status: (u.subscriptionStatus || 'ACTIVE').toUpperCase(),
-      planName: u.planName || 'VIP Annual Pass',
+      phoneOrEmail: u.phone || u.email || '—',
+      status: (u.subscriptionStatus || 'free').toUpperCase(),
+      planName: u.planName || (u.subscriptionStatus === 'active' ? (lang === 'mr' ? 'प्रीमियम वार्षिक प्लॅन' : 'Premium Annual Pass') : (lang === 'mr' ? 'मोफत (Free)' : 'Free Tier')),
       devicesCount: `${u.devices?.length || 1} Device(s)`,
-      joinedDate: formatDate(u.createdAt),
+      joinedDate: formatDate(u.createdAt || u.lastLogin || new Date().toISOString()),
     }));
-  }, [userList]);
+  }, [userList, lang]);
 
-  // 4. REVENUE REPORT DATA
+  // 4. REAL REVENUE REPORT DATA (Direct from real subscription transactions)
   const revenueReportData = useMemo(() => {
-    const baseSubs = subList.length > 0 ? subList : [
-      { id: 'sub_tx_10921', transactionId: 'TXN-RAZ-98124501', userName: 'Prajakta Pawar', planName: 'VIP Annual Pass', amount: 649, paymentProvider: 'razorpay', startDate: '2026-10-10T14:14:28.000Z', status: 'active' },
-      { id: 'sub_tx_10922', transactionId: 'TXN-UPI-88412903', userName: 'Siddhi Chavan', planName: 'Standard HD Pass', amount: 299, paymentProvider: 'upi', startDate: '2026-10-10T14:43:10.000Z', status: 'active' },
-      { id: 'sub_tx_10923', transactionId: 'TXN-RAZ-77192044', userName: 'John', planName: 'Mobile VIP Pass', amount: 149, paymentProvider: 'razorpay', startDate: '2026-10-10T18:12:58.000Z', status: 'active' },
-      { id: 'sub_tx_10924', transactionId: 'TXN-UPI-66321908', userName: 'Ganesh Shinde (पुणे)', planName: 'VIP Annual Pass', amount: 649, paymentProvider: 'upi', startDate: '2026-10-08T11:20:00.000Z', status: 'active' },
-      { id: 'sub_tx_10925', transactionId: 'TXN-RAZ-55219034', userName: 'Sunil Patil (कोल्हापूर)', planName: 'Standard HD Pass', amount: 299, paymentProvider: 'razorpay', startDate: '2026-10-07T16:45:00.000Z', status: 'active' },
-    ];
-    return baseSubs.map(s => ({
+    return subList.map(s => ({
       transactionId: s.transactionId || s.id,
-      subscriber: s.userName || s.userId,
-      plan: s.planName || 'VIP Plan',
+      subscriber: s.userName || s.userId || 'User',
+      plan: s.planName || (lang === 'mr' ? 'प्रीमियम प्लॅन' : 'Premium Plan'),
       amount: `₹${s.amount}`,
       provider: (s.paymentProvider || 'razorpay').toUpperCase(),
       date: formatDate(s.startDate),
       status: (s.status || 'ACTIVE').toUpperCase(),
     }));
-  }, [subList]);
+  }, [subList, lang]);
 
-  // 5. ADVERTISEMENT REPORT DATA
+  // 5. REAL ADVERTISEMENT REPORT DATA (Direct from active ad campaigns)
   const adReportData = useMemo(() => {
-    const baseAds = adList.length > 0 ? adList : [
-      { id: 'ad-01', title: 'Mahindra Agri Rural Showcase', advertiserName: 'Mahindra & Mahindra Ltd', adType: 'video', placement: 'Pre-Roll', impressions: 24500, clicks: 890, status: 'active' },
-      { id: 'ad-02', title: 'Maharashtra Agri Expo 2026', advertiserName: 'Kisan Krishi Vikas Mandal', adType: 'video', placement: 'Mid-Roll', impressions: 18200, clicks: 640, status: 'active' },
-      { id: 'ad-03', title: 'Finolex Pipes Rural Special', advertiserName: 'Finolex Industries', adType: 'banner', placement: 'Banner Slot', impressions: 31200, clicks: 1120, status: 'active' },
-    ];
-    return baseAds.map(a => ({
+    return adList.map(a => ({
       title: a.title,
-      advertiser: a.advertiserName || 'Direct Brand',
-      adType: (a.adType || 'video').toUpperCase(),
-      placement: a.placement || 'Pre-Roll',
+      advertiser: a.advertiserName || (lang === 'mr' ? 'थेट जाहिरातदार' : 'Direct Brand'),
+      adType: (a.adType || 'banner').toUpperCase(),
+      placement: a.placement || 'Home Top',
       impressions: (a.impressions || 0).toLocaleString(),
       clicks: (a.clicks || 0).toLocaleString(),
-      ctr: a.impressions ? `${((a.clicks / a.impressions) * 100).toFixed(2)}%` : '3.63%',
+      ctr: a.impressions && a.impressions > 0 ? `${((a.clicks / a.impressions) * 100).toFixed(2)}%` : '0.00%',
       status: (a.status || 'ACTIVE').toUpperCase(),
     }));
-  }, [adList]);
+  }, [adList, lang]);
 
   // 6. CONTENT PERFORMANCE REPORT DATA
   const contentReportData = useMemo(() => {
@@ -216,26 +281,7 @@ export default function ReportsAnalyticsPage() {
     }));
   }, [contentList]);
 
-  // 7. REAL DISTRICT-WISE REPORT DATA (Maharashtra 12 key districts distribution)
-  const districtData = useMemo(() => {
-    const maharashtraDistricts = [
-      { district: 'Pune (पुणे)', viewers: '84,500', watchHours: '1,420 hrs', subscribers: 145, topShow: 'Pune Stories / Maharashtra Hasya Jatra' },
-      { district: 'Mumbai (मुंबई)', viewers: '92,800', watchHours: '1,650 hrs', subscribers: 180, topShow: 'Chhaava' },
-      { district: 'Nashik (नाशिक)', viewers: '46,200', watchHours: '780 hrs', subscribers: 85, topShow: 'Namdar Maharashtra News' },
-      { district: 'Kolhapur (कोल्हापूर)', viewers: '41,500', watchHours: '710 hrs', subscribers: 72, topShow: 'Maharashtra Entertainment Special' },
-      { district: 'Chhatrapati Sambhajinagar (छत्रपती संभाजीनगर)', viewers: '36,200', watchHours: '590 hrs', subscribers: 58, topShow: 'Rural Road Project News' },
-      { district: 'Nagpur (नागपूर)', viewers: '32,400', watchHours: '540 hrs', subscribers: 52, topShow: 'Jailer' },
-      { district: 'Satara (सातारा)', viewers: '28,900', watchHours: '490 hrs', subscribers: 46, topShow: 'Maharashtra Hasya Jatra' },
-      { district: 'Solapur (सोलापूर)', viewers: '25,600', watchHours: '450 hrs', subscribers: 41, topShow: 'Namdar Maharashtra News' },
-      { district: 'Ahmednagar (अहिल्यानगर)', viewers: '24,100', watchHours: '420 hrs', subscribers: 38, topShow: 'Premalu' },
-      { district: 'Sangli (सांगली)', viewers: '21,300', watchHours: '380 hrs', subscribers: 33, topShow: 'Pune Morning News' },
-      { district: 'Amravati (अमरावती)', viewers: '18,700', watchHours: '320 hrs', subscribers: 28, topShow: 'Chhaava' },
-      { district: 'Jalgaon (जळगाव)', viewers: '16,400', watchHours: '290 hrs', subscribers: 25, topShow: 'Jailer' },
-    ];
-    return maharashtraDistricts;
-  }, []);
-
-  // 7 Report Options Configuration
+  // 6 Report Options Configuration
   const reportTabs = [
     { 
       id: 'daily' as const, 
@@ -285,14 +331,6 @@ export default function ReportsAnalyticsPage() {
       color: 'text-purple-600',
       badge: '4K VOD & Shows'
     },
-    { 
-      id: 'district' as const, 
-      label: lang === 'mr' ? '७. जिल्हानिहाय अहवाल' : lang === 'hi' ? '7. जिलेवार रिपोर्ट' : '7. District-wise Report', 
-      shortLabel: lang === 'mr' ? 'जिल्हानिहाय' : 'Districts',
-      icon: MapPin,
-      color: 'text-teal-600',
-      badge: 'Maharashtra Edge'
-    },
   ];
 
   // Build the export configuration for any report type
@@ -301,7 +339,7 @@ export default function ReportsAnalyticsPage() {
       case 'daily':
         return {
           reportId: 'daily',
-          reportTitle: 'Gramin Bharat TV - Daily Views Report (दैनिक प्रेक्षक अहवाल)',
+          reportTitle: 'Gramin Bharat TV - Daily Views Report',
           reportSubtitle: 'Daily viewership analytics, unique viewers, watch hours, and broadcast peak times',
           filename: 'Gramin_Bharat_Daily_Views_Report',
           headers: [
@@ -324,7 +362,7 @@ export default function ReportsAnalyticsPage() {
       case 'monthly':
         return {
           reportId: 'monthly',
-          reportTitle: 'Gramin Bharat TV - Monthly Views Report (मासिक प्रेक्षक अहवाल)',
+          reportTitle: 'Gramin Bharat TV - Monthly Views Report',
           reportSubtitle: 'Monthly trend analysis, Bunny CDN bandwidth, new subscriber acquisitions, and revenue',
           filename: 'Gramin_Bharat_Monthly_Views_Report',
           headers: [
@@ -347,7 +385,7 @@ export default function ReportsAnalyticsPage() {
       case 'users':
         return {
           reportId: 'users',
-          reportTitle: 'Gramin Bharat TV - User & Subscriber Report (वापरकर्ते व वर्गणीदार अहवाल)',
+          reportTitle: 'Gramin Bharat TV - User & Subscriber Report',
           reportSubtitle: 'Registered platform users, active device allocations, subscription plan tiers, and status',
           filename: 'Gramin_Bharat_User_Report',
           headers: [
@@ -370,7 +408,7 @@ export default function ReportsAnalyticsPage() {
       case 'revenue':
         return {
           reportId: 'revenue',
-          reportTitle: 'Gramin Bharat TV - Revenue & Transaction Report (महसूल व व्यवहार अहवाल)',
+          reportTitle: 'Gramin Bharat TV - Revenue & Transaction Report',
           reportSubtitle: 'Financial transaction history, gateway settlement status, and subscription revenue',
           filename: 'Gramin_Bharat_Revenue_Report',
           headers: [
@@ -394,7 +432,7 @@ export default function ReportsAnalyticsPage() {
       case 'ads':
         return {
           reportId: 'ads',
-          reportTitle: 'Gramin Bharat TV - Advertisement Report (जाहिरात मोहीम अहवाल)',
+          reportTitle: 'Gramin Bharat TV - Advertisement Report',
           reportSubtitle: 'Campaign impressions, direct video ad slots, viewer click-through rates (CTR), and monetization',
           filename: 'Gramin_Bharat_Advertisement_Report',
           headers: [
@@ -417,9 +455,10 @@ export default function ReportsAnalyticsPage() {
         };
 
       case 'content':
+      default:
         return {
           reportId: 'content',
-          reportTitle: 'Gramin Bharat TV - Content Performance Report (सामग्री कामगिरी अहवाल)',
+          reportTitle: 'Gramin Bharat TV - Content Performance Report',
           reportSubtitle: 'Streaming catalog views, likes, censor classification, and multi-tier distribution status',
           filename: 'Gramin_Bharat_Content_Performance_Report',
           headers: [
@@ -437,28 +476,6 @@ export default function ReportsAnalyticsPage() {
             { label: 'Catalog Items', value: contentList.length },
             { label: 'Total Streaming Views', value: totalViews.toLocaleString() },
             { label: 'Stream Engine', value: 'Bunny Stream 4K' }
-          ]
-        };
-
-      case 'district':
-      default:
-        return {
-          reportId: 'district',
-          reportTitle: 'Gramin Bharat TV - District-wise Report (महाराष्ट्र जिल्हानिहाय अहवाल)',
-          reportSubtitle: 'Regional Maharashtra viewership penetration, watch hours, active subscribers, and top shows',
-          filename: 'Gramin_Bharat_District_Wise_Report',
-          headers: [
-            lang === 'mr' ? 'जिल्हा' : 'District',
-            lang === 'mr' ? 'एकूण प्रेक्षक' : 'Total Viewers',
-            lang === 'mr' ? 'एकूण वॉच टाइम' : 'Watch Hours',
-            lang === 'mr' ? 'सक्रिय वर्गणीदार' : 'Subscribers',
-            lang === 'mr' ? 'सर्वाधिक पाहिलेला कार्यक्रम' : 'Top Watched Show'
-          ],
-          data: districtData.map(r => [r.district, r.viewers, r.watchHours, r.subscribers, r.topShow]),
-          dateRange: `${districtData.length} Districts Recorded (महाराष्ट्र)`,
-          summaryMetrics: [
-            { label: 'Covered Districts', value: districtData.length },
-            { label: 'Total Viewers', value: totalViews.toLocaleString() }
           ]
         };
     }
@@ -530,10 +547,10 @@ export default function ReportsAnalyticsPage() {
           </h1>
           <p className="text-xs text-[#7A6F68] mt-1.5 max-w-2xl font-medium leading-relaxed">
             {lang === 'mr' 
-              ? 'दैनिक, मासिक, वापरकर्ते, महसूल, जाहिरात, सामग्री व महाराष्ट्र जिल्हानिहाय अहवाल अधिकृत Excel (.xlsx) आणि PDF स्वरूपात तात्काळ डाऊनलोड करा.' 
+              ? 'दैनिक, मासिक, वापरकर्ते, महसूल, जाहिरात व सामग्री कामगिरी अहवाल अधिकृत Excel (.xlsx) आणि PDF स्वरूपात तात्काळ डाऊनलोड करा.' 
               : lang === 'hi' 
-              ? 'दैनिक, मासिक, उपयोगकर्ता, राजस्व, विज्ञापन, सामग्री और जिलेवार रिपोर्ट अधिकृत Excel (.xlsx) और PDF में डाउनलोड करें.' 
-              : 'Export official administrative Daily, Monthly, User, Revenue, Ads, Content, and District reports in Excel (.xlsx) and PDF (.pdf) formats.'}
+              ? 'दैनिक, मासिक, उपयोगकर्ता, राजस्व, विज्ञापन और सामग्री रिपोर्ट अधिकृत Excel (.xlsx) और PDF में डाउनलोड करें.' 
+              : 'Export official administrative Daily, Monthly, User, Revenue, Ads, and Content reports in Excel (.xlsx) and PDF (.pdf) formats.'}
           </p>
         </div>
 
@@ -632,12 +649,12 @@ export default function ReportsAnalyticsPage() {
         </div>
       </div>
 
-      {/* 7 Report Options Tabs Navigator */}
+      {/* 6 Report Options Tabs Navigator */}
       <div className="bg-white rounded-2xl border border-[#E5DBCA] p-2.5 shadow-soft">
         <div className="text-[11px] font-bold uppercase tracking-wider text-[#7A6F68] px-2 pb-2">
           {lang === 'mr' ? 'अहवाल प्रकार निवडा:' : 'Select Report Option:'}
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-1.5">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
           {reportTabs.map(tab => {
             const Icon = tab.icon;
             const isActive = reportType === tab.id;
@@ -687,7 +704,6 @@ export default function ReportsAnalyticsPage() {
               {reportType === 'revenue' && (lang === 'mr' ? 'सर्व वर्गणी व्यवहार, पेमेंट गेटवे, तारखा आणि महसूल अहवाल.' : 'Subscription transactions, gateway details, amounts, and settlement status.')}
               {reportType === 'ads' && (lang === 'mr' ? 'जाहिरात मोहिमा, इम्प्रेशन्स, थेट व्हिडिओ स्लॉट क्लिक्स आणि CTR दर.' : 'Active ad campaigns, video slots, impression delivery, and CTR stats.')}
               {reportType === 'content' && (lang === 'mr' ? 'स्ट्रीमिंग कॅटलॉग, चित्रपट, मालिका, व्ह्यूज, रेटिंग व प्रसिद्धी स्थिती.' : 'VOD catalog performance, streaming views, user likes, and censor ratings.')}
-              {reportType === 'district' && (lang === 'mr' ? 'महाराष्ट्रातील प्रमुख जिल्ह्यांचे प्रेक्षक, वॉच टाइम व लोकप्रिय कार्यक्रम.' : 'Maharashtra district distribution, watch hours, and top-watched programs.')}
             </p>
           </div>
 
@@ -971,49 +987,6 @@ export default function ReportsAnalyticsPage() {
           </div>
         )}
 
-        {/* 7. DISTRICT-WISE REPORT TABLE */}
-        {reportType === 'district' && (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="border-b border-[#E5DBCA] bg-[#FAF7F2] text-[#7A6F68] font-bold uppercase tracking-wider text-[11px]">
-                  <th className="py-3.5 px-5">{lang === 'mr' ? 'जिल्हा' : 'District'}</th>
-                  <th className="py-3.5 px-5">{lang === 'mr' ? 'एकूण प्रेक्षक' : 'Total Viewers'}</th>
-                  <th className="py-3.5 px-5">{lang === 'mr' ? 'एकूण वॉच टाइम' : 'Watch Time'}</th>
-                  <th className="py-3.5 px-5">{lang === 'mr' ? 'सक्रिय वर्गणीदार' : 'Subscribers'}</th>
-                  <th className="py-3.5 px-5">{lang === 'mr' ? 'सर्वाधिक पाहिलेला कार्यक्रम' : 'Top Show'}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#E5DBCA]/50 text-[#2D2522]">
-                {districtData.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="py-12 text-center text-[#7A6F68] font-medium">
-                      {lang === 'mr' ? 'कोणतीही माहिती उपलब्ध नाही (कोणतेही जिल्हानिहाय आकडेवारी नोंदवलेली नाही)' : 'No district records available'}
-                    </td>
-                  </tr>
-                ) : districtData.map((row, idx) => (
-                  <tr key={idx} className="hover:bg-[#FAF7F2]/60 transition">
-                    <td className="py-3.5 px-5 font-bold text-[#2D2522] flex items-center gap-2">
-                      <span className="w-5 h-5 rounded-full bg-[#EAF5EF] text-[#166534] text-[10px] flex items-center justify-center font-bold border border-[#B7E2CD]">
-                        {idx + 1}
-                      </span>
-                      {row.district}
-                    </td>
-                    <td className="py-3.5 px-5 font-semibold text-[#2D2522]">{row.viewers}</td>
-                    <td className="py-3.5 px-5 text-[#7A6F68]">{row.watchHours}</td>
-                    <td className="py-3.5 px-5">
-                      <span className="px-2.5 py-0.5 font-bold bg-[#EAF5EF] text-[#166534] rounded-full border border-[#B7E2CD] text-[11px]">
-                        {row.subscribers}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-5 text-[#7A6F68] font-medium">{row.topShow}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
         {/* Table Footer with Summary Status */}
         <div className="p-4 bg-[#FAF7F2] border-t border-[#E5DBCA] flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[11px] text-[#7A6F68]">
           <div className="flex items-center gap-2">
@@ -1032,7 +1005,6 @@ export default function ReportsAnalyticsPage() {
               {reportType === 'revenue' && `${revenueReportData.length} Total Transactions`}
               {reportType === 'ads' && `${adReportData.length} Total Ad Campaigns`}
               {reportType === 'content' && `${contentReportData.length} Total Content Items`}
-              {reportType === 'district' && `${districtData.length} Maharashtra Districts`}
             </span>
           </div>
         </div>

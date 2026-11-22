@@ -99,7 +99,12 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const [showAddOpsMenu, setShowAddOpsMenu] = React.useState(false);
   const addOpsRef = React.useRef<HTMLDivElement>(null);
   const [isMounted, setIsMounted] = React.useState(false);
-  const [dynamicCategories, setDynamicCategories] = React.useState<ContentCategory[]>([]);
+  const [dynamicCategories, setDynamicCategories] = React.useState<ContentCategory[]>(() => {
+    if (typeof window !== 'undefined') {
+      return firestoreService.getLocalCategories().filter(c => !isPodcastCategory(c));
+    }
+    return [];
+  });
   const [currentQuery, setCurrentQuery] = React.useState('');
   const [optimisticHref, setOptimisticHref] = React.useState<string | null>(null);
 

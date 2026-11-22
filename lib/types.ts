@@ -14,6 +14,7 @@ export interface AdminUser {
   email: string;
   name: string;
   role: AdminRole;
+  password?: string;
   photoUrl?: string;
   createdAt: string;
   lastLogin?: string;
@@ -43,6 +44,7 @@ export interface ContentItem {
   genres: string[];
   cast: string[];
   director: string;
+  directorPhoto?: string;
   language: string[];
   releaseDate: string;
   poster: string; // Bunny CDN URL
@@ -76,6 +78,8 @@ export interface ContentItem {
 
   // Video Metadata
   videoId?: string; // Bunny Stream video GUID or Stream URL
+  encryptedVideoId?: string; // AES-256 encrypted video identifier (anti-leak)
+  isEncrypted?: boolean;
   videoUrl?: string;
   hlsUrl?: string;
   embedUrl?: string;
@@ -86,11 +90,13 @@ export interface ContentItem {
 
   // Client Requirement Extensions (Section 8, 23, 25, 26)
   producer?: string;
+  producerPhoto?: string;
   audioLanguages?: string[];
   subtitleLanguages?: string[];
   subtitleUrl?: string;
   scheduledPublishDate?: string;
   isTrending?: boolean;
+  allowDownload?: boolean; // Enable or disable offline download in app for this individual item
 
   // Future Expansion Architecture (Pay-per-view, Multi-channel, Audio, Events)
   isPayPerView?: boolean;
@@ -112,11 +118,18 @@ export interface NotificationItem {
   category: 'breaking_news' | 'live_event' | 'new_movie' | 'new_episode' | 'special_program' | 'grievance' | string;
   targetType: 'all' | 'district' | 'plan';
   targetValue?: string;
+  contentId?: string;
+  imageUrl?: string;
   deepLinkUrl?: string;
   sentAt: string;
+  createdAt?: string;
+  expiresAt?: string;
+  expiryType?: '12pm' | '12h' | '24h' | 'never';
   sentBy: string;
   status: 'sent' | 'scheduled' | 'failed';
   recipientsCount: number;
+  read?: boolean;
+  isUnread?: boolean;
 }
 
 export interface ContentCategory {

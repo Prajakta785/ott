@@ -33,6 +33,21 @@ function sanitizeValue(val: any): string {
 }
 
 /**
+ * Strip parenthesized non-Latin text (e.g. Marathi/Hindi in brackets) and unsupported Devanagari Unicode
+ * so that standard PDF fonts (Helvetica) render crisp, professional, uncorrupted text.
+ */
+function cleanForPdf(text: any): string {
+  if (text === null || text === undefined) return '';
+  const s = String(text);
+  const cleaned = s
+    .replace(/\s*\([^)]*[\u0900-\u097F]+[^)]*\)/g, '') // Strips e.g. '(दैनिक प्रेक्षक अहवाल)', '(पुणे)'
+    .replace(/[\u0900-\u097F]+/g, '')                   // Strips any leftover Devanagari glyphs
+    .replace(/\s+/g, ' ')
+    .trim();
+  return cleaned || s; // Fallback to original if fully stripped
+}
+
+/**
  * Export report to formatted Excel (.xlsx) file
  */
 export async function exportToExcel(config: ReportExportConfig): Promise<void> {
@@ -183,14 +198,16 @@ export async function exportToPDF(config: ReportExportConfig): Promise<void> {
   doc.setTextColor(45, 37, 34); // Foreground #2D2522
   doc.setFontSize(15);
   doc.setFont('helvetica', 'bold');
-  doc.text(config.reportTitle, margin, currentY);
+  const cleanTitle = cleanForPdf(config.reportTitle);
+  doc.text(cleanTitle, margin, currentY);
 
   currentY += 5.5;
   doc.setFontSize(8.5);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(100, 116, 139); // Slate 500
-  const subText = config.reportSubtitle || 'Real-time performance and analytics report for administrative review.';
-  doc.text(`${subText} | Range: ${config.dateRange || 'All Data'} | Total Rows: ${config.data.length}`, margin, currentY);
+  const subText = cleanForPdf(config.reportSubtitle) || 'Real-time performance and analytics report for administrative review.';
+  const cleanRange = cleanForPdf(config.dateRange) || 'All Data';
+  doc.text(`${subText} | Range: ${cleanRange} | Total Rows: ${config.data.length}`, margin, currentY);
 
   // Summary Metrics Pills (if available)
   currentY += 5;
@@ -209,13 +226,13 @@ export async function exportToPDF(config: ReportExportConfig): Promise<void> {
       doc.setFontSize(6.5);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(122, 111, 104); // #7A6F68
-      doc.text(String(m.label).toUpperCase(), pillX + 3, currentY + 4);
+      doc.text(cleanForPdf(m.label).toUpperCase(), pillX + 3, currentY + 4);
 
       // Value
       doc.setFontSize(8.5);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(22, 101, 52); // #166534
-      doc.text(String(m.value), pillX + 3, currentY + 9);
+      doc.text(cleanForPdf(m.value), pillX + 3, currentY + 9);
 
       pillX += pillWidth + 3;
     });
@@ -225,15 +242,16 @@ export async function exportToPDF(config: ReportExportConfig): Promise<void> {
     currentY += 2;
   }
 
-  // Sanitize data rows for PDF rendering
+  // Sanitize headers and data rows for crisp PDF rendering without non-Latin font artifacts
+  const cleanHeaders = config.headers.map((h) => cleanForPdf(h));
   const tableBody = config.data.map((row) =>
-    row.map((cell) => sanitizeValue(cell))
+    row.map((cell) => cleanForPdf(cell))
   );
 
   // Generate Table using autoTable
   autoTable(doc, {
     startY: currentY,
-    head: [config.headers],
+    head: [cleanHeaders],
     body: tableBody,
     theme: 'grid',
     margin: { left: margin, right: margin, bottom: 18 },

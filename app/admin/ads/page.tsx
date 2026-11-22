@@ -198,22 +198,22 @@ export default function AdvertisementsPage() {
       </div>
 
       {/* Filter & Search Bar */}
-      <div className="flex flex-col sm:flex-row gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-        <div className="relative flex-1">
+      <div className="flex flex-col sm:flex-row gap-3 bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200 shadow-sm">
+        <div className="relative flex-1 min-w-0">
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder={lang === 'mr' ? 'जाहिरात शीर्षक किंवा प्रायोजकाचे नाव शोधा...' : lang === 'hi' ? 'विज्ञापन शीर्षक या प्रायोजक खोजें...' : 'Search campaigns or sponsor...'}
-            className="w-full pl-9 pr-4 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 focus:outline-none focus:border-rose-500 focus:bg-white"
+            className="w-full pl-9 pr-4 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-800 placeholder-slate-400 focus:outline-none focus:border-rose-500 focus:bg-white transition-colors"
           />
         </div>
 
         <select
           value={selectedPlacement}
           onChange={(e) => setSelectedPlacement(e.target.value)}
-          className="px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-700 focus:outline-none focus:border-rose-500"
+          className="w-full sm:w-56 px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:border-rose-500 truncate cursor-pointer font-medium shadow-xs"
         >
           <option value="all">{t('filterAllPlacements')}</option>
           <option value="home_top">{lang === 'mr' ? 'होम मुख्य बॅनर' : lang === 'hi' ? 'होम मुख्य बैनर' : 'Home Top Banner'}</option>

@@ -20,9 +20,11 @@ import {
   Image as ImageIcon,
   Headphones
 } from 'lucide-react';
+import dynamic from 'next/dynamic';
 import { useLanguage } from '@/lib/i18n';
-import { BunnyUploader } from '@/components/bunny-uploader';
-import { ConnectAudioModal } from '@/components/connect-audio-modal';
+
+const BunnyUploader = dynamic(() => import('@/components/bunny-uploader').then(mod => mod.BunnyUploader), { ssr: false });
+const ConnectAudioModal = dynamic(() => import('@/components/connect-audio-modal').then(mod => mod.ConnectAudioModal), { ssr: false });
 import { getSafeImageUrl, handleImageError } from '@/lib/image-utils';
 
 const MAHARASHTRA_DISTRICTS = [
@@ -99,8 +101,14 @@ const NEWS_SUBCATEGORY_LABELS: Record<string, { en: string; hi: string; mr: stri
 
 export default function NewsCMSPage() {
   const { t, lang } = useLanguage();
-  const [newsList, setNewsList] = useState<ContentItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [newsList, setNewsList] = useState<ContentItem[]>(() => {
+    if (typeof window !== 'undefined') {
+      const content = firestoreService.getLocalContent();
+      return content.filter(c => c.type === 'news' || (Array.isArray(c.genres) && c.genres.includes('News')) || c.category === 'news' || c.category === 'News');
+    }
+    return [];
+  });
+  const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDistrict, setSelectedDistrict] = useState('All');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -126,8 +134,8 @@ export default function NewsCMSPage() {
     status: 'published' as 'published' | 'draft',
   });
 
-  const loadNews = async () => {
-    setLoading(true);
+  const loadNews = async (silent = true) => {
+    if (!silent) setLoading(true);
     const content = await firestoreService.getContent();
     setNewsList(content.filter(c => c.type === 'news' || (Array.isArray(c.genres) && c.genres.includes('News')) || c.category === 'news' || c.category === 'News'));
     setLoading(false);
@@ -245,10 +253,10 @@ export default function NewsCMSPage() {
   return (
     <div className="space-y-6">
       {/* Header Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-7 rounded-3xl bg-white border border-slate-200 shadow-luxury">
-        <div>
-          <h1 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2.5">
-            <Newspaper className="w-6 h-6 text-rose-600" />
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-4 sm:p-7 rounded-2xl sm:rounded-3xl bg-white border border-slate-200 shadow-luxury">
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2.5">
+            <Newspaper className="w-5 h-5 sm:w-6 sm:h-6 text-rose-600" />
             {t('pageTitleNews')}
           </h1>
           <p className="text-xs text-slate-500 mt-1">
@@ -257,7 +265,7 @@ export default function NewsCMSPage() {
         </div>
         <button
           onClick={openCreateModal}
-          className="px-5 py-2.5 bg-[#EA580C] hover:bg-[#C2410C] active:scale-95 text-white font-bold text-xs rounded-xl flex items-center gap-2 transition shadow-sm shrink-0 cursor-pointer"
+          className="w-full sm:w-auto justify-center px-5 py-2.5 bg-[#EA580C] hover:bg-[#C2410C] active:scale-95 text-white font-bold text-xs rounded-xl flex items-center gap-2 transition shadow-sm shrink-0 cursor-pointer"
         >
           <Plus className="w-4 h-4" />
           {lang === 'mr' ? 'नवीन बातमी जोडा' : lang === 'hi' ? 'नया समाचार जोड़ें' : 'Add News'}
@@ -265,8 +273,8 @@ export default function NewsCMSPage() {
       </div>
 
       {/* Filter & Search Bar */}
-      <div className="flex flex-col sm:flex-row gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-        <div className="relative flex-1">
+      <div className="flex flex-col sm:flex-row gap-3 bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200 shadow-sm">
+        <div className="relative flex-1 min-w-0">
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
@@ -279,14 +287,14 @@ export default function NewsCMSPage() {
                 ? 'समाचार शीर्षक, जिला या संवाददाता का नाम खोजें...'
                 : 'Search news title, district or reporter name...'
             }
-            className="w-full pl-9 pr-4 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 focus:outline-none focus:border-rose-500 focus:bg-white"
+            className="w-full pl-9 pr-4 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-800 placeholder-slate-400 focus:outline-none focus:border-rose-500 focus:bg-white transition-colors"
           />
         </div>
 
         <select
           value={selectedDistrict}
           onChange={(e) => setSelectedDistrict(e.target.value)}
-          className="px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-700 focus:outline-none focus:border-rose-500"
+          className="w-full sm:w-48 px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:border-rose-500 truncate cursor-pointer font-medium shadow-xs"
         >
           <option value="All">{t('filterAllDistricts')}</option>
           {MAHARASHTRA_DISTRICTS.filter(d => !d.includes('All')).map((dist) => {
@@ -311,7 +319,7 @@ export default function NewsCMSPage() {
           <p className="text-slate-800 font-bold text-sm">{t('noDataText')}</p>
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-2 min-w-0 max-w-full">
           {/* Mobile Horizontal Scroll Hint */}
           <div className="sm:hidden flex items-center justify-between px-3 py-1.5 bg-amber-50/90 border border-amber-200/70 rounded-xl text-[11px] text-amber-900 font-semibold shadow-xs">
             <span className="flex items-center gap-1.5">
@@ -346,6 +354,8 @@ export default function NewsCMSPage() {
                       <img 
                         src={getSafeImageUrl(item.poster || item.banner || (item.videoId ? `/api/bunny/thumbnail?videoId=${item.videoId}` : ''))} 
                         alt={item.title} 
+                        loading="lazy"
+                        decoding="async"
                         onError={(e) => handleImageError(e)}
                         className="w-12 h-8 rounded-lg object-cover border border-slate-200 shrink-0 shadow-sm bg-slate-100" 
                       />

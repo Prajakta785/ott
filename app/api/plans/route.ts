@@ -67,10 +67,29 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'Plan name is required' }, { status: 400 });
     }
 
+    const price = Number(body.price) || 0;
+    let targetId = body.id || `plan_${Date.now()}`;
+    if (targetId.startsWith('plan_premium_') || targetId === 'plan_premium_399') {
+      targetId = `plan_premium_${price}`;
+    }
+
+    const oldId = body.oldId || (body.id && body.id !== targetId ? body.id : null);
+    if (oldId && oldId !== targetId) {
+      deleteServerPlan(oldId);
+      await deleteDocFromFirestore('plans', oldId).catch(() => {});
+    }
+
+    // Also proactively clean up legacy plan_premium_399 if targetId is different
+    if (targetId !== 'plan_premium_399') {
+      deleteServerPlan('plan_premium_399');
+      await deleteDocFromFirestore('plans', 'plan_premium_399').catch(() => {});
+    }
+
     const plan: Plan = {
       ...body,
-      id: body.id || `plan_${Date.now()}`,
-      price: Number(body.price) || 0,
+      id: targetId,
+      slug: body.slug || `premium-annual-plan-${price}`,
+      price: price,
       currency: body.currency || '₹',
       durationDays: Number(body.durationDays) || 30,
       active: body.active !== undefined ? body.active : true,
@@ -78,20 +97,48 @@ export async function POST(req: NextRequest) {
 
     const saved = saveServerPlan(plan);
 
-    // Sync in background to Cloud Firestore 'plans' collection for Flutter Mobile App & Web
-    await syncDocToFirestore('plans', plan.id, {
+    const planPayload = {
       id: plan.id,
       name: plan.name,
+      slug: plan.slug || plan.name.toLowerCase().replace(/\s+/g, '-'),
       price: plan.price,
       currency: '₹',
       durationDays: plan.durationDays,
+      billingCycle: plan.billingCycle || (plan.durationDays >= 365 ? 'yearly' : (plan.durationDays >= 90 ? 'quarterly' : 'monthly')),
       features: plan.features || [],
       maxDevices: plan.maxDevices || 1,
-      quality: plan.resolution || 'HD',
+      quality: plan.resolution || '1080p Full HD',
+      resolution: plan.resolution || '1080p Full HD',
       isPopular: !!plan.isPopular,
       active: plan.active,
       updatedAt: new Date().toISOString(),
-    }).catch(e => console.warn('Sync plan to Firestore notice:', e));
+    };
+
+    // 1. Sync directly to Cloud Firestore 'plans' collection
+    await syncDocToFirestore('plans', plan.id, planPayload).catch(e => console.warn('Sync plan to Firestore notice:', e));
+
+    // 2. ALSO update 'users/app_plans_config' so Flutter Mobile App gets real-time price updates immediately!
+    const allServerPlans = getServerPlans();
+    const plansListForApp = (allServerPlans && allServerPlans.length > 0 ? allServerPlans : [plan]).map(p => ({
+      id: p.id,
+      name: p.name,
+      slug: p.slug || p.name.toLowerCase().replace(/\s+/g, '-'),
+      price: Number(p.price) || 0,
+      currency: '₹',
+      durationDays: Number(p.durationDays) || 30,
+      billingCycle: p.billingCycle || (p.durationDays >= 365 ? 'yearly' : 'monthly'),
+      resolution: p.resolution || '1080p Full HD',
+      quality: p.resolution || '1080p Full HD',
+      maxDevices: Number(p.maxDevices) || 2,
+      isPopular: !!p.isPopular,
+      active: p.active !== false,
+      features: Array.isArray(p.features) ? p.features : [],
+    }));
+
+    await syncDocToFirestore('users', 'app_plans_config', {
+      plans: plansListForApp,
+      updatedAt: new Date().toISOString(),
+    }).catch(e => console.warn('Sync app_plans_config notice:', e));
 
     return NextResponse.json({
       success: true,
@@ -132,6 +179,13 @@ export async function DELETE(req: NextRequest) {
       type: 'plan',
       deletedAt: new Date().toISOString(),
     });
+
+    // 4. Update 'users/app_plans_config' so mobile app removes deleted plan
+    const remainingPlans = getServerPlans().filter(p => p.id !== id);
+    await syncDocToFirestore('users', 'app_plans_config', {
+      plans: remainingPlans,
+      updatedAt: new Date().toISOString(),
+    }).catch(() => {});
 
     return NextResponse.json({
       success: true,

@@ -77,7 +77,7 @@ export async function GET(req: NextRequest) {
       }
     });
   } catch (err: any) {
-    return NextResponse.json({ success: false, error: err?.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: err?.message, data: [] });
   }
 }
 
@@ -107,7 +107,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true, data: cat });
   } catch (err: any) {
-    return NextResponse.json({ success: false, error: err?.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: err?.message });
   }
 }
 
@@ -132,6 +132,6 @@ export async function DELETE(req: NextRequest) {
 
     return NextResponse.json({ success: true });
   } catch (err: any) {
-    return NextResponse.json({ success: false, error: err?.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: err?.message });
   }
 }

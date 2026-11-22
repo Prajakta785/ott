@@ -88,10 +88,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // Verify password:
     const isDefaultAdmin = trimmedEmail === 'admin@graminbharat.tv' && (trimmedPass === 'admin123' || trimmedPass === 'Gramin@Admin2026!');
-    const isGeneralMatch = matched && (trimmedPass === 'admin123' || trimmedPass.length >= 6);
+    const hasCustomPass = Boolean((matched as any)?.password);
+    const isCustomMatch = hasCustomPass && (matched as any).password === trimmedPass;
+    const isGeneralMatch = matched && (isCustomMatch || (!hasCustomPass && (trimmedPass === 'admin123' || trimmedPass.length >= 6)));
     const isMockAccepted = trimmedPass === 'admin123';
 
-    if (!isDefaultAdmin && !isGeneralMatch && !isMockAccepted) {
+    if (!isDefaultAdmin && !isCustomMatch && !isGeneralMatch && !isMockAccepted) {
       return { 
         success: false, 
         error: 'अवैध ईमेल किंवा पासवर्ड. कृपया पुन्हा प्रयत्न करा. / Invalid email or password. Please try again.' 

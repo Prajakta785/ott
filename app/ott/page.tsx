@@ -34,18 +34,32 @@ import {
   Mail,
   Smartphone,
   Globe,
-  ArrowLeft
+  ArrowLeft,
+  Lock,
+  Unlock
 } from 'lucide-react';
 import { firestoreService } from '@/lib/firestore-service';
 import { ContentItem, LiveChannel, Plan, Banner, User, CompanyInfo, ContentCategory } from '@/lib/types';
 import { initialCompanyInfo } from '@/lib/mock-data';
-import { VideoPlayer } from '@/components/video-player';
+import dynamic from 'next/dynamic';
+
+const VideoPlayer = dynamic(() => import('@/components/video-player').then(mod => mod.VideoPlayer), { ssr: false });
 import { useLanguage } from '@/lib/i18n';
 import { LanguageSwitcher } from '@/components/language-switcher';
 import { getSafeImageUrl, handleImageError } from '@/lib/image-utils';
 
 export default function OTTPlatformPage() {
   const { lang, t } = useLanguage();
+
+  const cleanResolution = (res?: string) => {
+    if (!res) return 'HD';
+    if (!res.includes(',')) return res;
+    const parts = res.split(',').map(s => s.trim());
+    return parts.find(r => r.toUpperCase().includes('4K'))
+      || parts.find(r => r.toUpperCase().includes('1080'))
+      || parts.find(r => r.toUpperCase().includes('720'))
+      || parts[0];
+  };
   const [contentList, setContentList] = useState<ContentItem[]>([]);
   const [channels, setChannels] = useState<LiveChannel[]>([]);
   const [banners, setBanners] = useState<Banner[]>([]);
@@ -59,6 +73,10 @@ export default function OTTPlatformPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedGenre, setSelectedGenre] = useState('all');
   const [selectedLanguage, setSelectedLanguage] = useState<'all' | 'mr' | 'hi' | 'en'>('all');
+  const [tierFilter, setTierFilter] = useState<'all' | 'premium' | 'free'>('all');
+  const [blockedPremiumItem, setBlockedPremiumItem] = useState<ContentItem | null>(null);
+  const [allUsersList, setAllUsersList] = useState<User[]>([]);
+  const [loginPhoneInput, setLoginPhoneInput] = useState('');
 
   // Video Playback Modal State
   const [playingVideo, setPlayingVideo] = useState<{
@@ -108,25 +126,29 @@ export default function OTTPlatformPage() {
         if (compData) {
           setCompanyInfo(compData);
         }
-        if (users.length > 0) {
-          setCurrentUser(users[0]);
+        setAllUsersList(users || []);
+
+        const savedPhone = typeof window !== 'undefined' ? localStorage.getItem('ott_login_phone') : null;
+        let activeViewer: User | null = null;
+        if (savedPhone) {
+          const clean = savedPhone.replace(/\D/g, '').slice(-10);
+          activeViewer = users.find(u => u.phone?.replace(/\D/g, '').slice(-10) === clean) || null;
+        }
+
+        if (activeViewer) {
+          setCurrentUser(activeViewer);
         } else {
-          // Default viewer profile
+          // Default viewer profile: strictly NON-SUBSCRIBED (Free) so Premium-only videos are protected
           setCurrentUser({
-            id: 'user-demo-01',
-            name: 'राहुल पाटील',
-            phone: '+91 98221 44520',
+            id: 'user_free_guest',
+            name: 'मोफत प्रेक्षक (Free Viewer)',
+            phone: '+91 7340339573',
             createdAt: new Date().toISOString(),
             subscriptionStatus: 'free',
-            planName: 'Free User',
-            devices: [
-              { deviceId: 'dev-1', deviceName: 'Samsung 4K Android TV', platform: 'android-tv', lastLogin: 'Just now' },
-              { deviceId: 'dev-2', deviceName: 'OnePlus 12 (Mobile)', platform: 'android', lastLogin: 'Yesterday' }
-            ],
+            planName: 'विना-सबस्क्रिप्शन (मोफत)',
+            devices: [],
             watchlist: ['mov-1', 'series-1'],
-            continueWatching: {
-              'mov-1': { position: 3420, duration: 5400, updatedAt: new Date().toISOString() }
-            }
+            continueWatching: {},
           });
         }
       } catch (err) {
@@ -407,7 +429,7 @@ export default function OTTPlatformPage() {
       channelCode: 'gramin_bharat_live',
       streamUrl: 'e6eb731d-a1b1-4885-a40b-54c4e860c78e',
       logo: '/app_logo.png',
-      poster: 'https://vz-92cc7e0f-cd7.b-cdn.net/e6eb731d-a1b1-4885-a40b-54c4e860c78e/thumbnail.jpg',
+      poster: 'https://vz-7a23e2a4-01b.b-cdn.net/e6eb731d-a1b1-4885-a40b-54c4e860c78e/thumbnail.jpg',
       description: '२४ तास चालू असलेले महाराष्ट्र ग्रामीण भागातील अग्रगण्य थेट बातमी चॅनेल.',
       isLive: true,
       status: 'active',
@@ -504,8 +526,22 @@ export default function OTTPlatformPage() {
   const displayChannels = channels.length > 0 ? channels : defaultLiveChannels;
   const displayPlans = plans.length > 0 ? plans : defaultPlans;
 
-  // Filter items by tab, genre, language and search
+  const isUserSubscribed = currentUser?.subscriptionStatus === 'active' &&
+                           currentUser?.planId !== 'free' &&
+                           currentUser?.planId !== 'none';
+
+  // Filter items by tab, genre, language, subscription tier and search
   const filteredMovies = allMovies.filter(m => {
+    // CRITICAL: Premium Only videos are ONLY shown to the subscribed number!
+    // Non-subscribed users CANNOT see Premium videos!
+    if (m.isPremium && !isUserSubscribed) {
+      return false;
+    }
+
+    // 1. Subscription Tier filter (Premium vs Free)
+    if (tierFilter === 'premium' && !m.isPremium) return false;
+    if (tierFilter === 'free' && m.isPremium) return false;
+
     const movieGenres = Array.isArray(m.genres) ? m.genres : [];
     if (selectedGenre !== 'all') {
       const gNorm = selectedGenre.toLowerCase();
@@ -548,6 +584,11 @@ export default function OTTPlatformPage() {
   });
 
   const filteredSeries = allSeries.filter(s => {
+    // CRITICAL: Premium Only series are ONLY shown to the subscribed number!
+    if (s.isPremium && !isUserSubscribed) {
+      return false;
+    }
+
     if (selectedLanguage !== 'all') {
       const rawLangs = Array.isArray(s.language)
         ? s.language
@@ -627,17 +668,10 @@ export default function OTTPlatformPage() {
   };
 
   const handlePlayContent = (item: ContentItem) => {
-    // Check Premium requirement
+    // Check Premium requirement: Only Subscribed users can watch Premium videos
     if (item.isPremium) {
-      const hasPremiumPlan = currentUser?.subscriptionStatus === 'active' &&
-                             currentUser?.planId !== 'free' &&
-                             currentUser?.planId !== 'none';
-      if (!hasPremiumPlan) {
-        alert(lang === 'mr' ? 'हा प्रीमियम चित्रपट आहे. कृपया पाहण्यासाठी सबस्क्रिप्शन घ्या.' : lang === 'hi' ? 'यह एक प्रीमियम फिल्म है। कृपया देखने के लिए सब्सक्रिप्शन लें।' : 'This is a premium movie. Please subscribe to watch.');
-        const plansSection = document.getElementById('plans-section');
-        if (plansSection) {
-          plansSection.scrollIntoView({ behavior: 'smooth' });
-        }
+      if (!isUserSubscribed) {
+        setBlockedPremiumItem(item);
         return; // Block playing
       }
     }
@@ -839,6 +873,24 @@ export default function OTTPlatformPage() {
               <ExternalLink className="w-3 h-3 text-slate-400" />
             </Link>
 
+            {/* Subscription Status Pill */}
+            {isUserSubscribed ? (
+              <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 text-[10px] font-black shadow-xs">
+                <Crown className="w-3 h-3 text-amber-400" />
+                <span>VIP Subscribed</span>
+              </span>
+            ) : (
+              <button
+                onClick={() => {
+                  const plansSection = document.getElementById('plans-section');
+                  if (plansSection) plansSection.scrollIntoView({ behavior: 'smooth' });
+                }}
+                className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 hover:text-white border border-amber-500/40 text-[10px] font-black cursor-pointer transition shadow-xs"
+              >
+                <span>⭐ सबस्क्रिप्शन घ्या</span>
+              </button>
+            )}
+
             {/* Profile Avatar & Watchlist Button */}
             <button
               onClick={() => setShowProfileModal(true)}
@@ -858,7 +910,8 @@ export default function OTTPlatformPage() {
 
       {/* 2. HERO FEATURED CAROUSEL */}
       {activeTab === 'all' && (() => {
-        const heroMovie = allMovies[0] || defaultMovies[0];
+        const visibleMovies = isUserSubscribed ? allMovies : allMovies.filter(m => !m.isPremium);
+        const heroMovie = visibleMovies[0] || defaultMovies.find(m => !m.isPremium) || defaultMovies[0];
         const heroTitle = heroMovie ? getContentTitle(heroMovie) : t('heroMovieTitle');
         const heroDesc = heroMovie ? (getContentDescription(heroMovie) || heroMovie.description) : t('heroMovieDesc');
         const heroBackdrop = heroMovie?.banner || heroMovie?.poster || 'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?w=1800';
@@ -1009,7 +1062,8 @@ export default function OTTPlatformPage() {
 
       {/* 3. CONTINUE WATCHING / WATCH HISTORY (MANDATORY REQUIREMENT E) */}
       {currentUser && (() => {
-        const continueMovie = allMovies[0] || defaultMovies[0];
+        const visibleMovies = isUserSubscribed ? allMovies : allMovies.filter(m => !m.isPremium);
+        const continueMovie = visibleMovies[0] || defaultMovies.find(m => !m.isPremium) || defaultMovies[0];
         return (
         <section className="max-w-7xl mx-auto px-4 sm:px-8 py-6 space-y-3">
           <div className="flex items-center justify-between">
@@ -1207,6 +1261,44 @@ export default function OTTPlatformPage() {
                 </button>
               </div>
 
+              {/* Subscription Tier Filter Pills (All / Premium / Free) */}
+              <div className="flex items-center gap-1 bg-slate-900/90 p-1 rounded-xl border border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setTierFilter('all')}
+                  className={`px-3 py-1 rounded-lg text-xs font-black transition cursor-pointer ${
+                    tierFilter === 'all'
+                      ? 'bg-rose-600 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  {lang === 'mr' ? 'सर्व चित्रपट' : 'All'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTierFilter('premium')}
+                  className={`px-3 py-1 rounded-lg text-xs font-black transition cursor-pointer flex items-center gap-1 ${
+                    tierFilter === 'premium'
+                      ? 'bg-gradient-to-r from-rose-600 to-amber-600 text-white shadow-glow-crimson'
+                      : 'text-amber-400/80 hover:text-amber-300'
+                  }`}
+                >
+                  <Crown className="w-3 h-3" />
+                  <span>{lang === 'mr' ? '👑 प्रीमियम' : 'Premium'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTierFilter('free')}
+                  className={`px-3 py-1 rounded-lg text-xs font-black transition cursor-pointer flex items-center gap-1 ${
+                    tierFilter === 'free'
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'text-emerald-400/80 hover:text-emerald-300'
+                  }`}
+                >
+                  <span>🆓 {lang === 'mr' ? 'मोफत' : 'Free'}</span>
+                </button>
+              </div>
+
               {/* Genre Filter */}
               <div className="hidden lg:flex items-center gap-1.5">
                 {['all', 'मराठी चित्रपट', 'हिंदी फ़िल्में', 'English Movies', 'ग्रामीण कथा'].map(g => (
@@ -1227,9 +1319,26 @@ export default function OTTPlatformPage() {
           </div>
 
           {filteredMovies.length === 0 ? (
-            <div className="text-center py-12 bg-slate-900/50 border border-slate-800 rounded-3xl p-6">
-              <Film className="w-10 h-10 text-slate-600 mx-auto mb-2" />
-              <p className="text-slate-400 text-sm font-medium">चित्रपट उपलब्ध नाहीत किंवा शोध परिणामात सापडले नाहीत.</p>
+            <div className="text-center py-12 bg-slate-900/50 border border-slate-800 rounded-3xl p-6 space-y-3">
+              <Film className="w-10 h-10 text-slate-600 mx-auto" />
+              <p className="text-slate-400 text-sm font-medium">
+                {tierFilter === 'premium' && !isUserSubscribed
+                  ? (lang === 'mr'
+                      ? '👑 हे प्रीमियम व्हिडिओ फक्त एका सबस्क्राइब केलेल्या नंबरलाच (Subscribed User) दिसतात. विना-सबस्क्रिप्शन युझर्सना प्रीमियम व्हिडिओ दिसत नाहीत.'
+                      : 'Premium-only videos are strictly restricted to the subscribed phone number.')
+                  : 'चित्रपट उपलब्ध नाहीत किंवा शोध परिणामात सापडले नाहीत.'}
+              </p>
+              {tierFilter === 'premium' && !isUserSubscribed && (
+                <button
+                  onClick={() => {
+                    const plansSection = document.getElementById('plans-section');
+                    if (plansSection) plansSection.scrollIntoView({ behavior: 'smooth' });
+                  }}
+                  className="px-5 py-2.5 rounded-2xl bg-gradient-to-r from-rose-600 to-amber-600 text-white font-black text-xs shadow-glow-crimson cursor-pointer"
+                >
+                  ⚡ सबस्क्रिप्शन प्लॅन घ्या (Unlock Premium)
+                </button>
+              )}
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
@@ -1240,30 +1349,64 @@ export default function OTTPlatformPage() {
                   onClick={() => setDetailItem(movie)}
                 >
                   <div>
-                    <div className="relative aspect-[2/3] w-full bg-slate-950 overflow-hidden">
+                    <div className="relative aspect-[2/3] w-full bg-slate-950 overflow-hidden flex items-center justify-center">
+                      {/* Ambient Blurred Backdrop */}
+                      <img
+                        src={getSafeImageUrl(movie.poster || movie.banner || (movie.videoId ? `/api/bunny/thumbnail?videoId=${movie.videoId}` : ''), 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=800&auto=format&fit=crop&q=80')}
+                        alt=""
+                        aria-hidden="true"
+                        className="absolute inset-0 w-full h-full object-cover blur-xl scale-125 opacity-50 pointer-events-none"
+                      />
+                      <div className="absolute inset-0 bg-black/30 pointer-events-none" />
+
+                      {/* Full Crisp Movie Image (Zero Cropping) */}
                       <img
                         src={getSafeImageUrl(movie.poster || movie.banner || (movie.videoId ? `/api/bunny/thumbnail?videoId=${movie.videoId}` : ''), 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=800&auto=format&fit=crop&q=80')}
                         alt={getContentTitle(movie)}
                         onError={(e) => handleImageError(e, 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=800&auto=format&fit=crop&q=80')}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                        className="relative z-1 max-w-full max-h-full w-auto h-auto object-contain group-hover:scale-105 transition-transform duration-500 drop-shadow-md"
                       />
-                      <div className="absolute top-2 left-2 flex flex-col gap-1">
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/20 pointer-events-none z-2" />
+
+                      {/* Top Badges: Resolution, VIP Locked / VIP Unlocked / Free */}
+                      <div className="absolute top-2 left-2 z-10 flex flex-col gap-1 items-start">
                         <span className="px-1.5 py-0.5 rounded bg-black/70 backdrop-blur-md text-amber-400 text-[9px] font-black border border-amber-500/30">
-                          {movie.resolution || '4K UHD'}
+                          {cleanResolution(movie.resolution)}
                         </span>
-                        {movie.isPremium && (
-                          <span className="px-1.5 py-0.5 rounded bg-gradient-to-r from-rose-600 to-amber-600 text-white text-[9px] font-black shadow-glow-crimson flex items-center gap-1">
-                            <Crown className="w-2.5 h-2.5" /> VIP
+                        {movie.isPremium ? (
+                          isUserSubscribed ? (
+                            <span className="px-1.5 py-0.5 rounded bg-emerald-600 text-white text-[9px] font-black shadow-xs flex items-center gap-1 border border-emerald-400/30">
+                              <Crown className="w-2.5 h-2.5 text-amber-300" /> VIP
+                            </span>
+                          ) : (
+                            <span className="px-1.5 py-0.5 rounded bg-gradient-to-r from-rose-600 to-amber-600 text-white text-[9px] font-black shadow-glow-crimson flex items-center gap-1 border border-rose-400/40">
+                              <Lock className="w-2.5 h-2.5" /> 👑 VIP LOCKED
+                            </span>
+                          )
+                        ) : (
+                          <span className="px-1.5 py-0.5 rounded bg-emerald-500/90 text-white text-[9px] font-black shadow-xs flex items-center gap-0.5">
+                            FREE
                           </span>
                         )}
                       </div>
 
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handlePlayContent(movie); }}
-                        className="absolute inset-0 m-auto w-10 h-10 rounded-full bg-rose-600 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition shadow-glow-crimson"
-                      >
-                        <Play className="w-4 h-4 fill-white translate-x-0.5" />
-                      </button>
+                      {/* Play or Lock Action Button on Hover */}
+                      {movie.isPremium && !isUserSubscribed ? (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handlePlayContent(movie); }}
+                          className="absolute inset-0 m-auto w-10 h-10 rounded-full bg-amber-600 hover:bg-amber-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition shadow-glow-amber z-20 cursor-pointer"
+                          title="VIP सबस्क्रिप्शन आवश्यक (पाहण्यासाठी क्लिक करा)"
+                        >
+                          <Lock className="w-4 h-4 text-white" />
+                        </button>
+                      ) : (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handlePlayContent(movie); }}
+                          className="absolute inset-0 m-auto w-10 h-10 rounded-full bg-rose-600 hover:bg-rose-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition shadow-glow-crimson z-20 cursor-pointer"
+                        >
+                          <Play className="w-4 h-4 fill-white translate-x-0.5" />
+                        </button>
+                      )}
                     </div>
 
                     <div className="p-3 space-y-1">
@@ -1305,21 +1448,38 @@ export default function OTTPlatformPage() {
                 onClick={() => setDetailItem(series)}
                 className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-xl hover:border-purple-500/50 transition-all cursor-pointer group"
               >
-                <div className="relative h-44 w-full bg-slate-950 overflow-hidden">
+                <div className="relative h-44 w-full bg-slate-950 overflow-hidden flex items-center justify-center">
+                  <img 
+                    src={getSafeImageUrl(series.banner || series.poster)} 
+                    alt="" 
+                    aria-hidden="true"
+                    className="absolute inset-0 w-full h-full object-cover blur-xl scale-125 opacity-50 pointer-events-none" 
+                  />
+                  <div className="absolute inset-0 bg-black/30 pointer-events-none" />
                   <img 
                     src={getSafeImageUrl(series.banner || series.poster)} 
                     alt={getContentTitle(series)} 
                     onError={(e) => handleImageError(e)}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
+                    className="relative z-1 max-w-full max-h-full w-auto h-auto object-contain group-hover:scale-105 transition-transform duration-500 drop-shadow-md" 
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-transparent" />
-                  <div className="absolute top-3 left-3 flex flex-col gap-1.5 items-start">
+                  <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-transparent pointer-events-none z-2" />
+                  <div className="absolute top-3 left-3 z-10 flex flex-col gap-1.5 items-start">
                     <span className="px-2 py-0.5 rounded-full bg-purple-600 text-white font-bold text-[10px]">
                       {t('season1Badge')}
                     </span>
-                    {series.isPremium && (
-                      <span className="px-1.5 py-0.5 rounded-full bg-gradient-to-r from-rose-600 to-amber-600 text-white font-black text-[10px] shadow-glow-crimson flex items-center gap-1">
-                        <Crown className="w-3 h-3" /> VIP
+                    {series.isPremium ? (
+                      isUserSubscribed ? (
+                        <span className="px-1.5 py-0.5 rounded-full bg-emerald-600 text-white font-black text-[10px] shadow-xs flex items-center gap-1">
+                          <Crown className="w-3 h-3 text-amber-300" /> VIP
+                        </span>
+                      ) : (
+                        <span className="px-1.5 py-0.5 rounded-full bg-gradient-to-r from-rose-600 to-amber-600 text-white font-black text-[10px] shadow-glow-crimson flex items-center gap-1">
+                          <Lock className="w-3 h-3" /> VIP LOCKED
+                        </span>
+                      )
+                    ) : (
+                      <span className="px-2 py-0.5 rounded-full bg-emerald-500/90 text-white font-bold text-[10px]">
+                        FREE
                       </span>
                     )}
                   </div>
@@ -1384,9 +1544,6 @@ export default function OTTPlatformPage() {
                   <div className="flex items-center gap-2 text-xs">
                     <span className="px-2.5 py-1 rounded-lg bg-white/10 text-amber-300 font-bold border border-white/10">
                       {plan.resolution}
-                    </span>
-                    <span className="text-slate-400 font-medium">
-                      {plan.maxDevices} {t('devicesSimultaneous')}
                     </span>
                   </div>
 
@@ -1473,6 +1630,126 @@ export default function OTTPlatformPage() {
               isLive={playingVideo.isLive}
               onClose={() => setPlayingVideo(null)}
             />
+          </div>
+        </div>
+      )}
+
+      {/* B. VIP PREMIUM CONTENT PAYWALL MODAL */}
+      {blockedPremiumItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in">
+          <div className="relative w-full max-w-md bg-slate-900 border border-amber-500/50 rounded-3xl p-6 sm:p-7 shadow-2xl text-center space-y-4">
+            <button
+              onClick={() => setBlockedPremiumItem(null)}
+              className="absolute top-4 right-4 p-2 text-slate-400 hover:text-white rounded-full bg-slate-800 transition cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            {/* Poster Thumbnail with Lock Overlay */}
+            <div className="relative w-28 h-36 mx-auto rounded-2xl overflow-hidden shadow-2xl border-2 border-amber-500/60 bg-slate-950">
+              <img
+                src={getSafeImageUrl(blockedPremiumItem.poster || blockedPremiumItem.banner)}
+                alt={getContentTitle(blockedPremiumItem)}
+                className="w-full h-full object-cover"
+              />
+              <div className="absolute inset-0 bg-black/50 backdrop-blur-[1px] flex items-center justify-center">
+                <div className="w-11 h-11 rounded-full bg-amber-500/30 border border-amber-400 flex items-center justify-center shadow-glow-amber">
+                  <Lock className="w-5 h-5 text-amber-300" />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-gradient-to-r from-rose-500/20 to-amber-500/20 text-amber-400 border border-amber-500/40 text-[11px] font-black shadow-xs">
+                <Crown className="w-3.5 h-3.5 text-amber-400" /> VIP प्रीमियम व्हिडिओ
+              </span>
+              <h3 className="text-lg font-black text-white">{getContentTitle(blockedPremiumItem)}</h3>
+              <p className="text-xs text-slate-300 max-w-xs mx-auto leading-relaxed">
+                {lang === 'mr'
+                  ? 'हा व्हिडिओ पाहण्यासाठी सशुल्क सबस्क्रिप्शन आवश्यक आहे. कृपया खालील प्लॅन निवडून लगेच सुरू करा!'
+                  : 'Active subscription plan required to stream this premium video.'}
+              </p>
+            </div>
+
+            {/* Plan Options */}
+            <div className="grid grid-cols-2 gap-2.5 text-left pt-1">
+              <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800 hover:border-amber-500/50 transition">
+                <p className="text-[11px] font-bold text-slate-300">मासिक VIP प्लॅन</p>
+                <p className="text-base font-black text-white mt-0.5">₹99 <span className="text-[10px] text-slate-400 font-normal">/ १ महिना</span></p>
+              </div>
+              <div className="p-3 rounded-2xl bg-gradient-to-b from-amber-500/10 to-slate-950 border-2 border-amber-500/60 transition relative">
+                <span className="absolute top-1.5 right-1.5 text-[8px] font-black bg-amber-500 text-black px-1.5 py-0.5 rounded-full">POPULAR</span>
+                <p className="text-[11px] font-bold text-amber-400">वार्षिक VIP पास</p>
+                <p className="text-base font-black text-white mt-0.5">₹499 <span className="text-[10px] text-slate-400 font-normal">/ १ वर्ष</span></p>
+              </div>
+            </div>
+
+            {/* Subscribe Now Button */}
+            <div className="space-y-2 pt-2">
+              <button
+                onClick={async () => {
+                  const targetUser: User = currentUser || {
+                    id: 'user_active_viewer',
+                    phone: '+91 9022705467',
+                    name: 'VIP Viewer',
+                    createdAt: new Date().toISOString(),
+                    subscriptionStatus: 'active' as const,
+                    planName: 'VIP Annual Pass',
+                    devices: [],
+                    watchlist: [],
+                    continueWatching: {},
+                  };
+                  const updated: User = {
+                    ...targetUser,
+                    subscriptionStatus: 'active',
+                    planId: 'vip-annual',
+                    planName: 'VIP Annual Pass',
+                    planExpiry: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+                  };
+                  setCurrentUser(updated);
+
+                  // Update via firestoreService
+                  try {
+                    await firestoreService.updateUserSubscription(targetUser.phone || targetUser.id, 'active', {
+                      planId: 'vip-annual',
+                      planName: 'VIP Annual Pass',
+                      name: targetUser.name,
+                    });
+                  } catch (e) {
+                    console.warn(e);
+                  }
+
+                  const itemToPlay = blockedPremiumItem;
+                  setBlockedPremiumItem(null);
+                  setTimeout(() => {
+                    if (itemToPlay) {
+                      setPlayingVideo({
+                        src: itemToPlay.videoId || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+                        title: getContentTitle(itemToPlay),
+                        subtitle: `${(itemToPlay.genres || []).map(formatGenre).join(' • ')} | ${itemToPlay.resolution || '4K UHD'}`,
+                        poster: itemToPlay.banner || itemToPlay.poster,
+                        isLive: false,
+                      });
+                    }
+                  }, 150);
+                }}
+                className="w-full py-3 rounded-2xl bg-gradient-to-r from-rose-600 via-amber-600 to-amber-500 hover:from-rose-500 hover:to-amber-400 text-white font-black text-xs flex items-center justify-center gap-2 shadow-glow-crimson transition active:scale-[0.98] cursor-pointer"
+              >
+                <Crown className="w-4 h-4 fill-white text-amber-300" />
+                <span>{lang === 'mr' ? '⚡ सबस्क्राइब करा आणि व्हिडिओ पहा (Unlock & Watch)' : 'Subscribe & Unlock Now'}</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  setBlockedPremiumItem(null);
+                  const plansSection = document.getElementById('plans-section');
+                  if (plansSection) plansSection.scrollIntoView({ behavior: 'smooth' });
+                }}
+                className="text-[11px] text-slate-400 hover:text-white transition cursor-pointer"
+              >
+                {lang === 'mr' ? 'सर्व सबस्क्रिप्शन प्लॅन्स तपशील पहा' : 'View all plan features'}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1632,20 +1909,170 @@ export default function OTTPlatformPage() {
             </div>
 
             {/* User Profile Card */}
-            <div className="flex items-center gap-3 p-3 bg-slate-800/80 rounded-2xl border border-slate-700">
-              <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-rose-500 to-amber-500 flex items-center justify-center font-black text-base text-white uppercase shadow-md">
-                {currentUser?.name?.charAt(0) || 'U'}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 bg-slate-800/80 rounded-2xl border border-slate-700">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-rose-500 to-amber-500 flex items-center justify-center font-black text-base text-white uppercase shadow-md shrink-0">
+                  {currentUser?.name?.charAt(0) || 'U'}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-white text-sm truncate">{currentUser?.name}</p>
+                  <p className="text-[11px] text-slate-400">{currentUser?.phone}</p>
+                  {isUserSubscribed ? (
+                    <span className="inline-block mt-1 px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 text-[10px] font-bold">
+                      👑 {currentUser?.planName || 'VIP Active'}
+                    </span>
+                  ) : (
+                    <span className="inline-block mt-1 px-2.5 py-0.5 rounded-full bg-slate-700 text-slate-300 border border-slate-600 text-[10px] font-bold">
+                      🆓 विना-सबस्क्रिप्शन (मोफत)
+                    </span>
+                  )}
+                </div>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-bold text-white text-sm truncate">{currentUser?.name}</p>
-                <p className="text-[11px] text-slate-400">{currentUser?.phone}</p>
-                <span className="inline-block mt-1 px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[9px] font-bold">
-                  {currentUser?.planName || 'VIP Active'}
-                </span>
+
+              {/* Quick Toggle For Testing (Subscribed vs Free mode) */}
+              <div className="flex items-center gap-2 self-end sm:self-center">
+                {isUserSubscribed ? (
+                  <button
+                    onClick={() => {
+                      if (currentUser) {
+                        const updated: User = { ...currentUser, subscriptionStatus: 'free', planName: 'मोफत (Free)' };
+                        setCurrentUser(updated);
+                        firestoreService.updateUserSubscription(currentUser.phone || currentUser.id, 'free').catch(() => {});
+                      }
+                    }}
+                    className="px-2.5 py-1 rounded-xl bg-slate-700 hover:bg-slate-600 text-slate-300 text-[10px] font-bold transition cursor-pointer"
+                    title="मोफत मोड टेस्ट करा"
+                  >
+                    मोफत मोड वर बदला
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => {
+                      if (currentUser) {
+                        const updated: User = { ...currentUser, subscriptionStatus: 'active', planId: 'vip-annual', planName: 'VIP Annual Pass' };
+                        setCurrentUser(updated);
+                        firestoreService.updateUserSubscription(currentUser.phone || currentUser.id, 'active', {
+                          planId: 'vip-annual',
+                          planName: 'VIP Annual Pass',
+                        }).catch(() => {});
+                      }
+                    }}
+                    className="px-2.5 py-1 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-black transition cursor-pointer shadow-xs"
+                    title="VIP मोड टेस्ट करा"
+                  >
+                    👑 VIP चालू करा
+                  </button>
+                )}
               </div>
-              <div className="text-right">
-                <span className="text-[10px] text-slate-400 block">{t('myWatchlist')}</span>
-                <span className="font-extrabold text-amber-400 text-xs">{watchlist.length} {t('moviesAndShowsCount')}</span>
+            </div>
+
+            {/* Mobile Number Login & Verification: Only subscribed number unlocks Premium */}
+            <div className="p-3.5 bg-slate-950/80 rounded-2xl border border-slate-800 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] font-black text-amber-400 uppercase tracking-wide flex items-center gap-1.5">
+                  <Smartphone className="w-3.5 h-3.5" /> मोबाईल नंबरने लॉगिन करा (Check by Phone)
+                </p>
+                <span className="text-[10px] text-slate-400">फक्त सबस्क्राइब नंबरलाच प्रीमियम व्हिडिओ दिसतात</span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  placeholder="उदा. 9022705467 किंवा इतर कोणताही नंबर..."
+                  value={loginPhoneInput}
+                  onChange={(e) => setLoginPhoneInput(e.target.value)}
+                  className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 font-mono"
+                />
+                <button
+                  onClick={() => {
+                    const clean = loginPhoneInput.replace(/\D/g, '').slice(-10);
+                    if (!clean) return;
+                    if (typeof window !== 'undefined') localStorage.setItem('ott_login_phone', clean);
+                    const found = allUsersList.find(u => u.phone?.replace(/\D/g, '').slice(-10) === clean);
+                    if (found) {
+                      setCurrentUser(found);
+                    } else {
+                      setCurrentUser({
+                        id: `user_${clean}`,
+                        name: `युझर ${clean}`,
+                        phone: `+91 ${clean}`,
+                        createdAt: new Date().toISOString(),
+                        subscriptionStatus: 'free',
+                        planName: 'विना-सबस्क्रिप्शन (मोफत)',
+                        devices: [],
+                        watchlist: [],
+                        continueWatching: {},
+                      });
+                    }
+                  }}
+                  className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs transition cursor-pointer shrink-0"
+                >
+                  लॉगिन
+                </button>
+              </div>
+
+              {/* Quick Testing Buttons: Subscribed vs Non-Subscribed Presets */}
+              <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const subUser = allUsersList.find(u => u.subscriptionStatus === 'active') || {
+                      id: 'user_9022705467',
+                      phone: '+91 9022705467',
+                      name: 'Prajakta Pawar (Subscribed)',
+                      createdAt: new Date().toISOString(),
+                      subscriptionStatus: 'active' as const,
+                      planId: 'vip-annual',
+                      planName: 'VIP Annual Pass',
+                    };
+                    if (typeof window !== 'undefined') localStorage.setItem('ott_login_phone', '9022705467');
+                    setCurrentUser(subUser as User);
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 hover:text-white hover:bg-emerald-900 text-[10px] font-bold transition cursor-pointer flex items-center gap-1"
+                >
+                  <Crown className="w-3 h-3 text-amber-400" />
+                  <span>👑 Subscribed User (+91 9022705467)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const freeUser = allUsersList.find(u => u.subscriptionStatus !== 'active' && u.phone?.includes('7340339573')) || {
+                      id: 'user_7340339573',
+                      phone: '+91 7340339573',
+                      name: 'Khyali Ram Saini (Free)',
+                      createdAt: new Date().toISOString(),
+                      subscriptionStatus: 'free' as const,
+                      planName: 'विना-सबस्क्रिप्शन (मोफत)',
+                    };
+                    if (typeof window !== 'undefined') localStorage.setItem('ott_login_phone', '7340339573');
+                    setCurrentUser(freeUser as User);
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800 text-[10px] font-bold transition cursor-pointer flex items-center gap-1"
+                >
+                  <span>🆓 Non-Subscribed User (+91 7340339573)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (typeof window !== 'undefined') localStorage.removeItem('ott_login_phone');
+                    setCurrentUser({
+                      id: 'user_free_guest',
+                      name: 'मोफत दर्शक (Guest)',
+                      phone: 'विना-लॉगिन',
+                      createdAt: new Date().toISOString(),
+                      subscriptionStatus: 'free',
+                      planName: 'विना-सबस्क्रिप्शन (मोफत)',
+                      devices: [],
+                      watchlist: [],
+                      continueWatching: {},
+                    });
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-slate-800 text-slate-400 hover:text-rose-400 text-[10px] font-bold transition cursor-pointer"
+                >
+                  लॉग आउट
+                </button>
               </div>
             </div>
 

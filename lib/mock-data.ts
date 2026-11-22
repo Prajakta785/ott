@@ -194,11 +194,11 @@ export const mockMonthlyTrends = [
 export const mockDeviceDistribution: Array<{ name: string; value: number; fill: string }> = [];
 
 export const initialBunnyConfig: BunnyConfig = {
-  apiKey: 'afb32a68-d916-4eac-83bb2d60a0df-3935-46e4',
-  streamLibraryId: '767488',
+  apiKey: 'a33345d2-ba76-49d0-8206c316903f-a89e-4e41',
+  streamLibraryId: '809137',
   storageZoneName: 'graminbharat',
   storageApiKey: '2d3836f0-1ac0-4550-bc5638b69bd8-18c0-45d9',
-  cdnHostname: 'vz-92cc7e0f-cd7.b-cdn.net',
+  cdnHostname: 'vz-7a23e2a4-01b.b-cdn.net',
   tokenSecurityKey: 'af71bff6-aa4a-4222-a99e-9589d3bed97c',
 };
 

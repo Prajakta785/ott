@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerContent, saveServerContent, deleteServerContent, getServerEpisodes, deleteServerEpisode, getServerSeasons, deleteServerSeason } from '@/lib/server-store';
+import { getServerContent, saveServerContent, deleteServerContent, getServerEpisodes, deleteServerEpisode, getServerSeasons, deleteServerSeason, saveServerNotification } from '@/lib/server-store';
 import { syncDocToFirestore, deleteDocFromFirestore, fetchDocsFromFirestore, recordDeletedContentInFirestore, getDeletedContentIds } from '@/lib/firestore-admin-sync';
 import { bunnyService } from '@/lib/bunny-service';
-import { ContentItem } from '@/lib/types';
+import { ContentItem, NotificationItem } from '@/lib/types';
+import { encryptVideoUrl } from '@/lib/crypto-utils';
+import { calculateNotificationExpiry } from '@/lib/notification-expiry';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,10 +39,12 @@ export async function GET(req: NextRequest) {
       const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(c.videoId || '');
       // Check if videoId is a valid Bunny Storage URL
       const isBunnyStorage = (c.videoId || '').includes('storage.bunnycdn.com') || (c.videoUrl || '').includes('storage.bunnycdn.com');
+      // Check if videoId is encrypted with AES-256
+      const isEncrypted = (c.videoId || '').startsWith('enc_v1:') || (c.encryptedVideoId || '').startsWith('enc_v1:');
       
       // If it's a series without a direct video, we only keep it if it's not the dummy one
       if (c.type === 'series') {
-        if (c.id === 'ser-rang-majha-vegla' || (c.videoId && !isUUID && !isBunnyStorage)) return false;
+        if (c.id === 'ser-rang-majha-vegla' || (c.videoId && !isUUID && !isBunnyStorage && !isEncrypted)) return false;
         return true;
       }
 
@@ -50,7 +54,7 @@ export async function GET(req: NextRequest) {
       }
       
       // For all other content (movies, news, shows), MUST have a valid Bunny video
-      return isUUID || isBunnyStorage;
+      return isUUID || isBunnyStorage || isEncrypted;
     });
 
     return NextResponse.json({
@@ -68,8 +72,9 @@ export async function GET(req: NextRequest) {
   } catch (err: any) {
     return NextResponse.json({
       success: false,
+      data: [],
       error: err?.message || 'Failed to fetch content'
-    }, { status: 500 });
+    });
   }
 }
 
@@ -93,31 +98,40 @@ export async function POST(req: NextRequest) {
       finalVideoId = 'b778c66f-91f6-451d-9b1d-02fc91fdc37b';
     }
 
+    const cdnHost = process.env.BUNNY_CDN_HOSTNAME || process.env.NEXT_PUBLIC_BUNNY_CDN_HOSTNAME || 'vz-7a23e2a4-01b.b-cdn.net';
+    const libId = process.env.BUNNY_STREAM_LIBRARY_ID || process.env.NEXT_PUBLIC_BUNNY_STREAM_LIBRARY_ID || '809137';
+
     const isGuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(finalVideoId);
-    const finalHlsUrl = isGuid ? `https://vz-92cc7e0f-cd7.b-cdn.net/${finalVideoId}/playlist.m3u8` : (videoPlayback?.hlsUrl || body.videoUrl || '');
-    const finalEmbedUrl = isGuid ? `https://iframe.mediadelivery.net/embed/767488/${finalVideoId}?autoplay=true&preload=true` : (videoPlayback?.embedUrl || '');
+    const finalHlsUrl = isGuid ? `https://${cdnHost}/${finalVideoId}/playlist.m3u8` : (videoPlayback?.hlsUrl || body.videoUrl || '');
+    const finalEmbedUrl = isGuid ? `https://iframe.mediadelivery.net/embed/${libId}/${finalVideoId}?autoplay=true&preload=true` : (videoPlayback?.embedUrl || '');
 
     const contentType = body.type || body.contentType || 'movie';
     const isPodcast = contentType === 'podcast' || contentType === 'audio';
     const audioTrack = body.audioTrackUrl || body.audioUrl || (isPodcast ? (finalHlsUrl || finalVideoId) : '');
+    const activeVideo = finalVideoId || audioTrack;
+    const encryptedVideo = body.encryptedVideoId || (activeVideo ? encryptVideoUrl(activeVideo) : '');
+
     const item: ContentItem = {
       ...body,
       id: body.id || (contentType === 'series' ? 'ser-' : isPodcast ? 'pod-' : 'mov-') + Date.now().toString(36),
       type: contentType,
       status: body.status || 'published', // ensure published for Android app visibility
-      poster: body.poster || body.posterUrl || (isGuid ? `https://vz-92cc7e0f-cd7.b-cdn.net/${finalVideoId}/thumbnail.jpg` : (isPodcast ? 'https://images.unsplash.com/photo-1592982537447-7440770cbfc9?w=800' : '')),
-      posterUrl: body.posterUrl || body.poster || (isGuid ? `https://vz-92cc7e0f-cd7.b-cdn.net/${finalVideoId}/thumbnail.jpg` : (isPodcast ? 'https://images.unsplash.com/photo-1592982537447-7440770cbfc9?w=800' : '')),
-      banner: body.banner || body.bannerUrl || (isGuid ? `https://vz-92cc7e0f-cd7.b-cdn.net/${finalVideoId}/thumbnail.jpg` : (isPodcast ? 'https://images.unsplash.com/photo-1592982537447-7440770cbfc9?w=1200' : '')),
-      bannerUrl: body.bannerUrl || body.banner || (isGuid ? `https://vz-92cc7e0f-cd7.b-cdn.net/${finalVideoId}/thumbnail.jpg` : (isPodcast ? 'https://images.unsplash.com/photo-1592982537447-7440770cbfc9?w=1200' : '')),
+      poster: body.poster || body.posterUrl || (isGuid ? `https://${cdnHost}/${finalVideoId}/thumbnail.jpg` : (isPodcast ? 'https://images.unsplash.com/photo-1592982537447-7440770cbfc9?w=800' : '')),
+      posterUrl: body.posterUrl || body.poster || (isGuid ? `https://${cdnHost}/${finalVideoId}/thumbnail.jpg` : (isPodcast ? 'https://images.unsplash.com/photo-1592982537447-7440770cbfc9?w=800' : '')),
+      banner: body.banner || body.bannerUrl || (isGuid ? `https://${cdnHost}/${finalVideoId}/thumbnail.jpg` : (isPodcast ? 'https://images.unsplash.com/photo-1592982537447-7440770cbfc9?w=1200' : '')),
+      bannerUrl: body.bannerUrl || body.banner || (isGuid ? `https://${cdnHost}/${finalVideoId}/thumbnail.jpg` : (isPodcast ? 'https://images.unsplash.com/photo-1592982537447-7440770cbfc9?w=1200' : '')),
       duration: body.duration || body.durationMinutes || (isPodcast ? 1800 : 0),
       durationMinutes: body.durationMinutes || (body.duration ? (body.duration > 300 ? Math.floor(body.duration / 60) : body.duration) : (isPodcast ? 30 : 0)),
-      videoId: finalVideoId || audioTrack,
+      videoId: activeVideo,
+      encryptedVideoId: encryptedVideo,
+      isEncrypted: !!encryptedVideo,
       videoUrl: finalHlsUrl || audioTrack,
       audioUrl: audioTrack,
       audioTrackUrl: audioTrack,
       hlsUrl: finalHlsUrl || audioTrack,
       embedUrl: finalEmbedUrl,
       isFeatured: body.isFeatured !== undefined ? !!body.isFeatured : true,
+      allowDownload: body.allowDownload !== undefined ? !!body.allowDownload : true,
     };
 
     const saved = saveServerContent(item);
@@ -147,7 +161,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: false,
       error: err?.message || 'Failed to save content'
-    }, { status: 500 });
+    });
   }
 }
 
@@ -235,7 +249,7 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({
       success: false,
       error: err?.message || 'Failed to delete content'
-    }, { status: 500 });
+    });
   }
 }
 
